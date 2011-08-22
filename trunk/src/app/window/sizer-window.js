@@ -27,7 +27,7 @@ function(app, index, opt_domHelper) {
   this.canvas = null;
   this.width = 0;
   this.height = 0;
-  this.size = 0;
+  this.size = 5;
   this.leftDrag = false;
 };
 goog.inherits(
