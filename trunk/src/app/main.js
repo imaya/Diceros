@@ -5,9 +5,9 @@ goog.require('goog.dom');
 goog.require('goog.style');
 
 /**
- * ƒAƒvƒŠƒP[ƒVƒ‡ƒ“ƒƒCƒ“ƒNƒ‰ƒX
- * @param {string} targetId ƒAƒvƒŠƒP[ƒVƒ‡ƒ“—p‚Ì DIV —v‘f
- * @param {Object=} opt_config ƒAƒvƒŠƒP[ƒVƒ‡ƒ“İ’è
+ * ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ãƒ¡ã‚¤ãƒ³ã‚¯ãƒ©ã‚¹
+ * @param {string} targetId ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ç”¨ã® DIV è¦ç´ 
+ * @param {Object=} opt_config ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³è¨­å®š
  * @constructor
  */
 application.Diceros.Main = function(targetId, opt_config) {
@@ -31,7 +31,7 @@ application.Diceros.Main = function(targetId, opt_config) {
   this.diceros.render(element);
 };
 
-// Diceros.Main ‚Æ‚µ‚ÄŠO‚©‚ç—˜—p‚Å‚«‚é‚æ‚¤‚É‚·‚é
+// Diceros.Main ã¨ã—ã¦å¤–ã‹ã‚‰åˆ©ç”¨ã§ãã‚‹ã‚ˆã†ã«ã™ã‚‹
 goog.exportSymbol('Diceros.Main', application.Diceros.Main);
 
 /* vim:set expandtab ts=2 sw=2 tw=80: */
