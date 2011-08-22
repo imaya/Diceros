@@ -1,1 +1,32 @@
-My GitHub Page
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="./css/diceros.css" />
+  <link rel="stylesheet" href="./css/closure.css" />
+  <title>Diceros demo</title>
+  <script src="./release.js?"></script>
+</head>
+
+<body>
+
+<h1>Diceros demo</h1>
+
+<ul>
+  <li>Wacomペンタブレットに対応: <a href="http://www.wacom.com/CustomerCare/Plugin.aspx">plugin</a></li>
+  <li>Alt: 制御点の表示</li>
+  <li>Alt+ホイール: 線の太さを調整(制御点上)</li>
+</ul>
+
+<div id="application"></div>
+
+<embed name="wacom-plugin" id="wacom-plugin" type="application/x-wacom-tablet" hidden="true"></embed>
+
+<script>
+  var body = document.body;
+  new Diceros.Main('application', {width: 1024, height: 768});
+</script>
+
+</body>
+</html>
+<!-- vim:set expandtab ts=2 sw=2: -->
