@@ -1,0 +1,58 @@
+[ プロジェクト名 ]
+
+Diceros
+
+
+[ 開発者 ]
+
+IMAYA Yuta <imaya.devel@gmail.com>
+
+
+[ ライセンス ]
+
+MIT
+
+
+[ ディレクトリ構造 ]
+
+  + [trunk]
+    + [src] ... ソースコード本体
+  + [vendor]
+    + [clocure-library]
+      + [closure-library-current] ... Closure Library
+    + [closure-compiler]
+      + compiler-current.jar ... Closure Compiler
+    + [jsdoc-toolkit-ant-task]
+      + jsdoc-toolkit-ant-task-current.jar ... JSDoc-ToolKit Ant Task
+
+
+[ はじめに ]
+
+Closure Library をダウンロードして closure-library-current にリネームする。
+Closure Compiler をダウンロードして jar ファイルを compiler-current.jar にリネームする。
+JSDoc-Toolkit Ant Task をダウンロードして jsdoc-toolkit-ant-task-current.jar にリネームする。
+
+リネームしたファイル、ディレクトリを上記ディレクトリ構造を参考に vendor 以下に移動する。
+パスの通った環境に python を入れておく。
+
+
+[ スタイルガイド ]
+
+Google JavaScript Style Guide を参照。
+ただし、JSDoc 特有の部分は適宜 JSDoc-Toolkit 形式に読み替えて行う事とする。
+
+
+[ ビルド ]
+
+ant を用いて行う。
+trunk に移動し、各ビルドを行う方法は下記の通り。
+
+ - ant deps     // 依存関係を解決する deps.js の作成を行う。開発用ならばここまででOK。
+ - ant combine  // 各 js ファイルを結合し、最適化を行う。
+ - ant debug    // debugフラグを削除しないで結合と最適化を行う。
+ - ant release  // リリース用ファイルを作成する。
+ - ant document // API リファレンスの作成を行う。
+ - ant all      // 上記全ての処理を行う。
+ - ant clean    // ビルドにより作成される全てのファイルを削除する。
+
+
