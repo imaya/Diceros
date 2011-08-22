@@ -25,9 +25,14 @@ goog.scope(function() {
 
 /**
  * お絵描きアプリケーションクラス
+ * @params {Object=} opt_config アプリケーション初期化設定
  * @constructor
  */
-application.Diceros.Application = function() {
+application.Diceros.Application = function(opt_config) {
+  if (typeof opt_config !== 'object') {
+    opt_config = {};
+  }
+
   /**
    * 描画対象エレメント
    * @type {?Element}
@@ -44,12 +49,12 @@ application.Diceros.Application = function() {
    * 横幅
    * @type {number}
    */
-  this.width = 1024;
+  this.width = opt_config.width || 1024;
   /**
    * 縦幅
    * @type {number}
    */
-  this.height = 768;
+  this.height = opt_config.height || 768;
   /**
    * ウィンドウリスト
    * @type {Array.<application.Diceros.Window>}
