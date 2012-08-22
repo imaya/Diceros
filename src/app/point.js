@@ -9,8 +9,7 @@ goog.scope(function() {
  * @param {boolean=} opt_noPressure 筆圧を利用しない.
  * @constructor
  */
-Diceros.Point =
-function(x, y, opt_width, opt_noPressure) {
+Diceros.Point = function(x, y, opt_width, opt_noPressure) {
   /**
    * クラス名
    * @type {string}
@@ -20,12 +19,12 @@ function(x, y, opt_width, opt_noPressure) {
    * X 座標
    * @type {number}
    */
-  this.x = (typeof x === 'undefined') ? 0 : x;
+  this.x = x;
   /**
    * Y 座標
    * @type {number}
    */
-  this.y = (typeof y === 'undefined') ? 0 : y;
+  this.y = y;
 
   if (isNaN(x) || isNaN(y)) {
     throw 'NaN error';
@@ -47,9 +46,7 @@ function(x, y, opt_width, opt_noPressure) {
  * @return {number} 筆圧(0.0-1.0).
  */
 Diceros.Point.prototype.getPressure = function() {
-  /**
-   * @type {Element}
-   */
+  /** @type {Object} */
   var plugin = this.getPlugin();
 
   // プラグイン未検出
@@ -65,6 +62,9 @@ Diceros.Point.prototype.getPressure = function() {
       return 1;
     }
 
+    /** @type {number} */
+    plugin.pressure;
+
     return plugin.pressure;
   }
 
@@ -73,7 +73,7 @@ Diceros.Point.prototype.getPressure = function() {
 
 /**
  * ペンタブレットのプラグイン
- * @type {Element}
+ * @return {Object} wacom plugin.
  * XXX: IE用のプラグイン検出も対応する必要がある
  */
 Diceros.Point.prototype.getPlugin = function() {

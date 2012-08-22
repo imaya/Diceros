@@ -21,12 +21,19 @@ goog.scope(function(){
 Diceros.SizerWindow = function(app, index, opt_domHelper) {
   goog.base(this, app, index, opt_domHelper);
 
+  /** @type {string} */
   this.name = 'SizerWindow';
-  this.element = null;
-  this.canvas = null;
+  /** @type {!Element} */
+  this.element;
+  /** @type {!Element} */
+  this.canvas;
+  /** @type {number} */
   this.width = 0;
+  /** @type {number} */
   this.height = 0;
+  /** @type {number} */
   this.size = 5;
+  /** @type {boolean} */
   this.leftDrag = false;
 };
 goog.inherits(Diceros.SizerWindow, Diceros.Window);
@@ -68,7 +75,7 @@ Diceros.SizerWindow.prototype.decorateInternal = function(element) {
 /**
  * XXXXXXXXXXXXXXX この辺全体的にコード汚い　別のメソッドに分離すべし
  */
-Diceros.SizerWindow.prototype.setEvent = function(element) {
+Diceros.SizerWindow.prototype.setEvent = function() {
   var that = this;
 
   // mouse
@@ -116,7 +123,7 @@ Diceros.SizerWindow.prototype.setEvent = function(element) {
 };
 
 /**
- * @param {goog.math.coordinate} point
+ * @param {!goog.math.Coordinate} point
  * @private
  */
 Diceros.SizerWindow.prototype.pointToSize_ = function(point) {

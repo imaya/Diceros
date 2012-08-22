@@ -34,9 +34,9 @@ function(app, index, opt_width, opt_height) {
   this.name = 'CanvasWindow';
   /**
    * XXX: キャンバスエレメント?
-   * @type {Element}
+   * @type {!Element}
    */
-  this.element = null;
+  this.element;
   /**
    * XXX: ドラッグ中？
    * @type {boolean}
@@ -51,7 +51,7 @@ function(app, index, opt_width, opt_height) {
    * 現在編集中のレイヤー index
    * @type {number}
    */
-  this.currentLayer = null;
+  this.currentLayer;
   /**
    * 横幅
    * @type {number}
@@ -258,9 +258,14 @@ function(index) {
  */
 Diceros.CanvasWindow.prototype.checkCanvasArea =
 function(event) {
-  var offset = goog.style.getPageOffset(event.target),
-      x = event.pageX - offset.x,
-      y = event.pageY - offset.y;
+  var offset, x, y;
+
+  /** @type {Element} */
+  event.target;
+
+  offset = goog.style.getPageOffset(event.target);
+  x = event.pageX - offset.x;
+  y = event.pageY - offset.y;
 
   // canvas 内
   if (x >= 0 && x < this.width && y >= 0 && y < this.height) {

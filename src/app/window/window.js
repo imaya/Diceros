@@ -7,7 +7,7 @@ goog.scope(function(){
 /**
  * アプリケーションウィンドウ基本クラス
  *
- * @param {Diceros.application} app
+ * @param {Diceros.Application} app
  * @param {number} index
  * @param {goog.dom.DomHelper=} opt_domHelper Optional DOM helper.
  *
@@ -15,7 +15,7 @@ goog.scope(function(){
  * @constructor
  */
 Diceros.Window = function(app, index, opt_domHelper) {
-  goog.base(this, this.opt_domHelper);
+  goog.base(this, opt_domHelper);
 
   /**
    * クラス名
@@ -31,14 +31,14 @@ Diceros.Window = function(app, index, opt_domHelper) {
    * 自分のウィンドウリストの index
    * @type {number}
    */
-  this.index = null;
+  this.index;
 };
 goog.inherits(Diceros.Window, goog.ui.Component);
 
 /**
  * イベントの設定を行う
  */
-Diceros.Window.prototype.setEvent = goog.abstructMethod;
+Diceros.Window.prototype.setEvent = goog.abstractMethod;
 
 
 // end of scope

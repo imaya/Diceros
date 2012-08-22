@@ -62,13 +62,13 @@ Diceros.Layer.prototype.init = function() {
 /**
  * レイヤーの更新を行う
  */
-Diceros.Layer.prototype.update = goog.abstructMethod;
+Diceros.Layer.prototype.update = goog.abstractMethod;
 
 
 /**
  * レイヤーの描画を行う
  */
-Diceros.Layer.prototype.draw = goog.abstructMethod;
+Diceros.Layer.prototype.draw = goog.abstractMethod;
 
 
 /**
@@ -113,7 +113,7 @@ Diceros.Layer.prototype.hide = function() {
 /**
  * イベントハンドラ
  */
-Diceros.Layer.prototype.event = goog.abstructMethod;
+Diceros.Layer.prototype.event = goog.abstractMethod;
 
 
 // end of scope

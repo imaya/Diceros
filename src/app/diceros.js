@@ -36,9 +36,9 @@ Diceros.Application = function(opt_config) {
 
   /**
    * 描画対象エレメント
-   * @type {HTMLElement}
+   * @type {!Element}
    */
-  this.target = null;
+  this.target;
   /**
    * CSSプレフィックス
    * @type {string}
@@ -65,17 +65,17 @@ Diceros.Application = function(opt_config) {
    * 現在のキャンバスウィンドウの index
    * @type {number}
    */
-  this.currentCanvasWindow = null;
+  this.currentCanvasWindow;
   /**
    * 現在のレイヤーウィンドウの index
    * @type {number}
    */
-  this.layerWindow = null;
+  this.layerWindow;
   /**
    * 現在のペンサイズ調整ウィンドウの index
    * @type {number}
    */
-  this.sizerWindow = null;
+  this.sizerWindow;
   /**
    * レイアウト用のオブジェクト
    * @type {Object}
@@ -85,7 +85,7 @@ Diceros.Application = function(opt_config) {
 
 /**
  * アプリケーションの描画
- * @param {HTMLElement} target 描画対象となる HTML Element.
+ * @param {!Element} target 描画対象となる HTML Element.
  */
 Diceros.Application.prototype.render = function(target) {
   this.target = target;
@@ -97,7 +97,7 @@ Diceros.Application.prototype.render = function(target) {
  * 各コンポーネントの配置
  */
 Diceros.Application.prototype.layout = function() {
-  var layer, canvas,
+  var layer, canvas, sizer,
       height = this.height - Diceros.util.scrollBarWidth(),
       layout = this.layoutPanels;
 
@@ -130,7 +130,7 @@ Diceros.Application.prototype.layout = function() {
   // 適用
   layout.baseSplitPane.render(this.target);
   layout.baseSplitPane.setSize(new goog.math.Size(this.width, this.height));
-  layout.toolSplitPane.setSize(new goog.math.Size('100%', height));
+  layout.toolSplitPane.setSize(new goog.math.Size(layout.toolSplitPane.getFirstComponentSize().width, height));
 
   // スタイル変更
   layout.toolSplitPane.getFirstContainer = function(){
@@ -200,7 +200,7 @@ Diceros.Application.prototype.selectCanvasWindow = function(index) {
  * @return {Diceros.CanvasWindow} 現在のキャンバスウィンドウ.
  */
 Diceros.Application.prototype.getCurrentCanvasWindow = function() {
-  return this.windows[this.currentCanvasWindow];
+  return /** @type {Diceros.CanvasWindow} */this.windows[this.currentCanvasWindow];
 };
 
 /**
@@ -208,14 +208,14 @@ Diceros.Application.prototype.getCurrentCanvasWindow = function() {
  * @return {Diceros.SizerWindow} 現在のサイズ調整ウィンドウ.
  */
 Diceros.Application.prototype.getCurrentSizerWindow = function() {
-  return this.windows[this.sizerWindow];
+  return /** @type {Diceros.SizerWindow} */ this.windows[this.sizerWindow];
 };
 
 /**
  * キャンバスの作成
  * @param {number} width 作成するキャンバスの横幅.
  * @param {number} height 作成するキャンバスの縦幅.
- * @return {HTMLElement} 作成したキャンバス.
+ * @return {!Element} 作成したキャンバス.
  */
 Diceros.Application.prototype.makeCanvas = function(width, height) {
   var canvas = document.createElement('canvas');
@@ -228,9 +228,11 @@ Diceros.Application.prototype.makeCanvas = function(width, height) {
     // uucanvas
     } else if (window.uu && window.uu.canvas &&
                typeof window.uu.canvas.create === 'function') {
-      var dummynode = goog.dom.createElement('div', {'id': '_canvas_dummy'});
+      var dummynode = goog.dom.createElement('div');
+      var uu = window.uu;
 
-      goog.dom.removeElement(canvas); // uuCanvasはノードの作り方が違うので一度消す
+      goog.dom.setProperties(dummynode, {'id': '_canvas_dummy'});
+
       canvas = uu.canvas.create(
         width, height, 'vml', uu.id('_canvas_dummy')
       );

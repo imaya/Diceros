@@ -18,29 +18,26 @@ Diceros.BezierAGG = function() {
   this.curveCtrlPoints = []; // ベジェ曲線用の制御点
   this.subCtrlPoints = []; // 途中計算用の制御点
 
-  // const
-
-  // 90度はよく使うので定数化しておく
-  this.MATH_PI_HALF = Math.PI / 2;
-
   // AGG Project のページに記載されている倍率パラメータ
   // 小さいほど制御点を鋭く通過するようになる
   // XXX: 変更可能にする
   this.smoothness = 0.75;
 };
-goog.inherits(
-  Diceros.BezierAGG,
-  Diceros.Line
-);
+goog.inherits(Diceros.BezierAGG, Diceros.Line);
 
+/**
+ * 90度はよく使うので定数化しておく
+ * @const
+ * @type {number}
+ */
+Diceros.BezierAGG.MATH_PI_HALF = Math.PI / 2;
 
 /**
  * 制御点の追加
  * @param {Diceros.Point} point 追加する制御点.
  * @return {number} 追加した制御点のindex.
  */
-Diceros.Line.prototype.addControlPoint =
-function(point) {
+Diceros.BezierAGG.prototype.addControlPoint = function(point) {
   var index = this.ctrlPoints.length;
 
   this.ctrlPoints.push(point);
@@ -65,27 +62,30 @@ function(point) {
  * 制御点の削除
  * @param {number} index 削除する制御点の index.
  */
-Diceros.Line.prototype.removeConrtrolPoint =
-function(index) {
-  this.ctrlPoints.splice(index, 1);
-  this.curveCtrlPoints.splice(index, 1);
-  this.subCtrlPoints.splice(index, 1);
+Diceros.BezierAGG.prototype.removeConrtrolPoint = function(index) {
+  var ctrlPoints = this.ctrlPoints;
+  var curveCtrlPoints = this.curveCtrlPoints;
+  var subCtrlPoints = this.subCtrlPoints;
+
+  ctrlPoints.splice(index, 1);
+  curveCtrlPoints.splice(index, 1);
+  subCtrlPoints.splice(index, 1);
 
   // XXX: 未テスト
   if (index >= 2){
-    this.curveCtrlPoints[index - 2] = null;
-    this.subCtrlPoints[index - 2] = null;
+    curveCtrlPoints[index - 2] = null;
+    subCtrlPoints[index - 2] = null;
   }
   if (index >= 1){
-    this.curveCtrlPoints[index - 1] = null;
-    this.subCtrlPoints[index - 1] = null;
+    curveCtrlPoints[index - 1] = null;
+    subCtrlPoints[index - 1] = null;
   }
-  if (index < this.subCtrlPoints.length - 1) {
-    this.curveCtrlPoints[index + 1] = null;
-    this.subCtrlPoints[index + 1] = null;
+  if (index < subCtrlPoints.length - 1) {
+    curveCtrlPoints[index + 1] = null;
+    subCtrlPoints[index + 1] = null;
   }
-  this.curveCtrlPoints[index] = null;
-  this.subCtrlPoints[index] = null;
+  curveCtrlPoints[index] = null;
+  subCtrlPoints[index] = null;
 };
 
 
@@ -94,33 +94,36 @@ function(index) {
  * @param {number} index 変更する制御点の index.
  * @param {Diceros.Point} point 新しい制御点の位置.
  */
-Diceros.Line.prototype.updateControlPoint =
-function(index, point) {
+Diceros.BezierAGG.prototype.updateControlPoint = function(index, point) {
+  var ctrlPoints = this.ctrlPoints;
+  var curveCtrlPoints = this.curveCtrlPoints;
+  var subCtrlPoints = this.subCtrlPoints;
+
   if (index >= 2){
-    this.curveCtrlPoints[index - 2] = null;
-    this.subCtrlPoints[index - 2] = null;
+    curveCtrlPoints[index - 2] = null;
+    subCtrlPoints[index - 2] = null;
   }
   if (index >= 1){
-    this.curveCtrlPoints[index - 1] = null;
-    this.subCtrlPoints[index - 1] = null;
+    curveCtrlPoints[index - 1] = null;
+    subCtrlPoints[index - 1] = null;
   }
   if (index < this.subCtrlPoints.length - 1) {
-    this.curveCtrlPoints[index + 1] = null;
-    this.subCtrlPoints[index + 1] = null;
+    curveCtrlPoints[index + 1] = null;
+    subCtrlPoints[index + 1] = null;
   }
-  this.curveCtrlPoints[index] = null;
-  this.subCtrlPoints[index] = null;
+  curveCtrlPoints[index] = null;
+  subCtrlPoints[index] = null;
 
-  this.ctrlPoints.splice(index, 1, point);
+  ctrlPoints.splice(index, 1, point);
 };
 
 
 /**
  * 描画
  * @param {Object} ctx 描画するコンテキスト.
- * @param {number} width 幅を固定する場合は指定する.
+ * @param {number=} opt_width 幅を固定する場合は指定する.
  */
-Diceros.Line.prototype.drawOutline = function(ctx, width) {
+Diceros.BezierAGG.prototype.drawOutline = function(ctx, opt_width) {
   var data = this.ctrlPoints,
       ctrlPoints = this.getCtrlPointsAGG_(data, this.curveCtrlPoints),
       defaultWidth = ctx.lineWidth,
@@ -151,7 +154,7 @@ Diceros.Line.prototype.drawOutline = function(ctx, width) {
       throw 'invalid control points';
     }
 
-    if (!width) {
+    if (opt_width === void 0) {
       ctx.lineWidth = (prev.width + point.width);
       ctx.stroke();
       ctx.beginPath();
@@ -159,8 +162,8 @@ Diceros.Line.prototype.drawOutline = function(ctx, width) {
     }
   }
 
-  if (width) {
-    ctx.lineWidth = width;
+  if (opt_width !== void 0) {
+    ctx.lineWidth = opt_width | 0;
     ctx.stroke();
   }
 
@@ -173,7 +176,7 @@ Diceros.Line.prototype.drawOutline = function(ctx, width) {
  * 描画
  * @param {Object} ctx 描画するコンテキスト.
  */
-Diceros.Line.prototype.draw = function(ctx) {
+Diceros.BezierAGG.prototype.draw = function(ctx) {
   var data = this.ctrlPoints,
       ctrlPoints = this.getCtrlPointsAGG_(data, this.curveCtrlPoints),
       bezierLines = [[], []], // 素のベジェ曲線パラメータを入れておく箱
@@ -296,7 +299,7 @@ function(ctx, s, c1, c2, e, index, bezierLines) {
      this.subCtrlPoints[index] : null;
 
   if (scps === null) {
-    tmp = this.getBezierSegmentAGG_(s, c1, c2, e);
+    tmp = this.getBezierSegmentAGG_(s, c1, c2, e, 0);
     line1 = tmp.line1;
     line2 = tmp.line2;
     endAngle1 = tmp.endAngle1;
@@ -348,14 +351,12 @@ function(ctx, s, c1, c2, e, index, bezierLines) {
 
 /**
  * 点の配列から制御点を計算して取得する
- * @param {Diceros.Point[]} data 点の配列.
- * @param {array} ctrlPoints 操作対象の制御点配列.
+ * @param {Array.<Diceros.Point>} data 点の配列.
+ * @param {Array} ctrlPoints 操作対象の制御点配列.
  * @return {Array} 制御点の配列.
  * @private
  */
-Diceros.BezierAGG.prototype.getCtrlPointsAGG_ =
-function(data, ctrlPoints) {
-  // 制御点の算出
+Diceros.BezierAGG.prototype.getCtrlPointsAGG_ = function(data, ctrlPoints) {
   for (var i = 0, l = data.length; i < l; i++) {
     if (typeof ctrlPoints[i] !== 'array') {
       ctrlPoints[i] = [];
@@ -369,9 +370,9 @@ function(data, ctrlPoints) {
 
 /**
  * 点の配列から指定した点の制御点を計算する
- * @param {Diceros.Point[]} data 点の配列.
+ * @param {Array.<Diceros.Point>} data 点の配列.
  * @param {number} index 対象となる index.
- * @param {array} ctrlPoints 操作対象の制御点配列.
+ * @param {Array} ctrlPoints 操作対象の制御点配列.
  * @private
  */
 Diceros.BezierAGG.prototype.getCtrlPointAGG_ =
@@ -445,12 +446,8 @@ function(data, index, ctrlPoints) {
  * @return {Diceros.Point} p1 と p2 の中点.
  * @private
  */
-Diceros.BezierAGG.prototype.getCenterPoint_ =
-function(p1, p2) {
-  return {
-    x: (p1.x + p2.x) / 2,
-    y: (p1.y + p2.y) / 2
-  };
+Diceros.BezierAGG.prototype.getCenterPoint_ = function(p1, p2) {
+  return new Diceros.Point((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, null);
 };
 
 
@@ -460,13 +457,8 @@ function(p1, p2) {
  * @return {Diceros.Point} x, y それぞれの倍率.
  * @private
  */
-Diceros.BezierAGG.prototype.getRate_ =
-function(rad) {
-  return new Diceros.Point(
-    Math.cos(rad),
-    Math.sin(rad),
-    null
-  );
+Diceros.BezierAGG.prototype.getRate_ = function(rad) {
+  return new Diceros.Point(Math.cos(rad), Math.sin(rad), null);
 };
 
 
@@ -476,12 +468,14 @@ function(rad) {
  * @param {Diceros.Point} c1 制御点1.
  * @param {Diceros.Point} c2 制御点2.
  * @param {Diceros.Point} e 終点.
- * @param {Number} depth 再帰の深さ.
+ * @param {number} depth 再帰の深さ.
+ * @param {Array=} opt_l1 再帰で使用する変数.
+ * @param {Array=} opt_l2 再帰で使用する変数.
  * @return {Object} 中継点アウトラインの制御点配列.
  * @private
  */
 Diceros.BezierAGG.prototype.getBezierSegmentAGG_ =
-function(s, c1, c2, e, depth) {
+function(s, c1, c2, e, depth, opt_l1, opt_l2) {
   var sRad = Math.atan2(c1.y - s.y, c1.x - s.x), // 始点から制御点1への角度
       eRad = Math.atan2(e.y - c2.y, e.x - c2.x), // 制御点2から終点への角度
       tRad, // tに対応するベジェ曲線上の点の接線の角度
@@ -493,8 +487,9 @@ function(s, c1, c2, e, depth) {
       r, // tに対応するベジェ曲線上の点
       t, // ベジェ曲線のパラメータ
       width, // 線の太さ
-      tS1, tS2, tE1, tE1, // 太さを考慮した分割した各点
-      line1 = [], line2 = [],
+      tS1, tS2, tE1, tE2, // 太さを考慮した分割した各点
+      line1 = (opt_l1 || []), line2 = (opt_l2 || []),
+      l1pos = line1.length, l2pos = line2.length,
       left, right; // 左右に分割した際の補助制御点
 
   if (!depth) {
@@ -508,19 +503,15 @@ function(s, c1, c2, e, depth) {
 
   // 初回だったら終点を加える
   if (depth === 0) {
-    line1.push(
-      new Diceros.Point(
-        s.x + Math.cos(sRad + this.MATH_PI_HALF) * s.width,
-        s.y + Math.sin(sRad + this.MATH_PI_HALF) * s.width,
+    line1[l1pos++] = new Diceros.Point(
+        s.x + Math.cos(sRad + Diceros.BezierAGG.MATH_PI_HALF) * s.width,
+        s.y + Math.sin(sRad + Diceros.BezierAGG.MATH_PI_HALF) * s.width,
         null
-      )
     );
-    line2.push(
-      new Diceros.Point(
-        s.x + Math.cos(sRad - this.MATH_PI_HALF) * s.width,
-        s.y + Math.sin(sRad - this.MATH_PI_HALF) * s.width,
+    line2[l2pos++] = new Diceros.Point(
+        s.x + Math.cos(sRad - Diceros.BezierAGG.MATH_PI_HALF) * s.width,
+        s.y + Math.sin(sRad - Diceros.BezierAGG.MATH_PI_HALF) * s.width,
         null
-      )
     );
   }
 
@@ -539,53 +530,47 @@ function(s, c1, c2, e, depth) {
     tRad = Math.atan2(tC1C2C2E.y - tSC1C1C2.y, tC1C2C2E.x - tSC1C1C2.x);
     r = this.getBezierPoint_(tSC1C1C2, tC1C2C2E, t, width);
 
-    left = this.getBezierSegmentAGG_(s, tSC1, tSC1C1C2, r, depth + 1);
-    Array.prototype.push.apply(line1, left.line1);
-    Array.prototype.push.apply(line2, left.line2);
+    left = this.getBezierSegmentAGG_(s, tSC1, tSC1C1C2, r, depth + 1, line1, line2);
+    //Array.prototype.push.apply(line1, left.line1);
+    //Array.prototype.push.apply(line2, left.line2);
+    l1pos = line1.length;
+    l2pos = line2.length;
 
-    line1.push(
-      new Diceros.Point(
-        r.x + Math.cos(tRad + this.MATH_PI_HALF) * r.width,
-        r.y + Math.sin(tRad + this.MATH_PI_HALF) * r.width,
+    line1[l1pos++] = new Diceros.Point(
+        r.x + Math.cos(tRad + Diceros.BezierAGG.MATH_PI_HALF) * r.width,
+        r.y + Math.sin(tRad + Diceros.BezierAGG.MATH_PI_HALF) * r.width,
         null
-      )
     );
-    line2.push(
-      new Diceros.Point(
-        r.x + Math.cos(tRad - this.MATH_PI_HALF) * r.width,
-        r.y + Math.sin(tRad - this.MATH_PI_HALF) * r.width,
+    line2[l2pos++] = new Diceros.Point(
+        r.x + Math.cos(tRad - Diceros.BezierAGG.MATH_PI_HALF) * r.width,
+        r.y + Math.sin(tRad - Diceros.BezierAGG.MATH_PI_HALF) * r.width,
         null
-      )
     );
 
-    right = this.getBezierSegmentAGG_(r, tC1C2C2E, tC2E, e, depth + 1);
-    Array.prototype.push.apply(line1, right.line1);
-    Array.prototype.push.apply(line2, right.line2);
+    right = this.getBezierSegmentAGG_(r, tC1C2C2E, tC2E, e, depth + 1, line1, line2);
+    l1pos = line1.length;
+    l2pos = line2.length;
   }
 
   // 初回だったら終点を加える
   if (depth === 0) {
-    line1.push(
-      new Diceros.Point(
-        e.x + Math.cos(eRad + this.MATH_PI_HALF) * e.width,
-        e.y + Math.sin(eRad + this.MATH_PI_HALF) * e.width,
+    line1[l1pos++] = new Diceros.Point(
+        e.x + Math.cos(eRad + Diceros.BezierAGG.MATH_PI_HALF) * e.width,
+        e.y + Math.sin(eRad + Diceros.BezierAGG.MATH_PI_HALF) * e.width,
         null
-      )
     );
-    line2.push(
-      new Diceros.Point(
-        e.x + Math.cos(eRad - this.MATH_PI_HALF) * e.width,
-        e.y + Math.sin(eRad - this.MATH_PI_HALF) * e.width,
+    line2[l2pos++] = new Diceros.Point(
+        e.x + Math.cos(eRad - Diceros.BezierAGG.MATH_PI_HALF) * e.width,
+        e.y + Math.sin(eRad - Diceros.BezierAGG.MATH_PI_HALF) * e.width,
         null
-      )
     );
   }
 
   return {
     line1: line1,
     line2: line2,
-    endAngle1: eRad + this.MATH_PI_HALF,
-    endAngle2: eRad - this.MATH_PI_HALF
+    endAngle1: eRad + Diceros.BezierAGG.MATH_PI_HALF,
+    endAngle2: eRad - Diceros.BezierAGG.MATH_PI_HALF
   };
 };
 
@@ -595,16 +580,16 @@ function(s, c1, c2, e, depth) {
  * @param {Diceros.Point} s 始点.
  * @param {Diceros.Point} e 終点.
  * @param {number} t ベジェ曲線のパラメータ t.
- * @param {number} width 点の太さ.
+ * @param {number=} opt_width 点の太さ.
  * @return {Diceros.Point} s, e を t:1-t で分割した点.
  * @private
  */
 Diceros.BezierAGG.prototype.getBezierPoint_ =
-function(s, e, t, width) {
+function(s, e, t, opt_width) {
   return new Diceros.Point(
     s.x + (e.x - s.x) * t,
     s.y + (e.y - s.y) * t,
-    (typeof width === 'number') ? width : null,
+    (typeof opt_width === 'number') ? opt_width : null,
     true
   );
 };
@@ -614,7 +599,7 @@ function(s, e, t, width) {
  * 2次ベジェ曲線を3次ベジェ曲線に変換する
  * @param {Diceros.Point} s 始点.
  * @param {Diceros.Point} c1 制御点.
- * @param {Diceros.Point} s 終点.
+ * @param {Diceros.Point} e 終点.
  * @return {Array} 3次ベジェ曲線の2つの制御点を配列で返す.
  * @private
  */
@@ -639,7 +624,7 @@ function(s, c1, e) {
  * 三平方の定理で2点を両端とする線分の長さを計算する
  * @param {Diceros.Point} p1 始点.
  * @param {Diceros.Point} p2 終点.
- * @return {Number} p1, p2 を両端とする線分の長さ.
+ * @return {number} p1, p2 を両端とする線分の長さ.
  * @private
  */
 Diceros.BezierAGG.prototype.pythagorean_ =

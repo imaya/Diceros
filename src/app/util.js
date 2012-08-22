@@ -15,14 +15,20 @@ Diceros.util.prepend = function(elm, node) {
   elm.insertBefore(node, elm.firstChild);
 };
 
-Diceros.util.data = function(elm, label, data) {
+/**
+ * @param {Element} elm 対象要素.
+ * @param {string} label データラベル.
+ * @param {*=} opt_data 埋め込むデータ. 省略時はデータ取得となる.
+ * @return {*} 埋め込まれたデータ.
+ */
+Diceros.util.data = function(elm, label, opt_data) {
   elm.application_data = elm.application_data || {};
 
-  if (typeof data === 'undefined') {
+  if (opt_data === void 0) {
     return elm.application_data[label];
   }
 
-  return (elm.application_data[label] = data);
+  return (elm.application_data[label] = opt_data);
 }
 
 Diceros.util.scrollBarWidth = function() { 

@@ -44,7 +44,7 @@ Diceros.VectorLayer = function(app) {
    * 現在の編集中の線の index
    * @type {number}
    */
-  this.currentLine = null;
+  this.currentLine;
   /**
    * 現在編集中の制御点
    * @type {Object}
@@ -94,14 +94,19 @@ Diceros.VectorLayer.Mode = {
 
 /**
  * イベントハンドラ
- * @param {Event} event Eventオブジェクト.
+ * @param {goog.events.BrowserEvent} event Eventオブジェクト.
  */
 Diceros.VectorLayer.prototype.event = function(event) {
   var canvas = this.canvas,
       ctx = this.ctx,
-      offset = goog.style.getPageOffset(event.target),
-      x = event.event_.pageX - offset.x,
-      y = event.event_.pageY - offset.y;
+      offset, x, y;
+
+  /** @type {Element} */
+  event.target;
+
+  offset = goog.style.getPageOffset(event.target);
+  x = event.event_.pageX - offset.x,
+  y = event.event_.pageY - offset.y;
 
   if (canvas === null || ctx === null) {
     throw 'canvas not initialized';
@@ -216,7 +221,7 @@ Diceros.VectorLayer.prototype.event = function(event) {
             this.refreshCurrentLine();
             this.pop(); // 保存バッファの切り捨て
 
-            this.currentLine = null;
+            this.currentLine = 0; // XXX: 暫定的に null から 0 にしたが、0だと不都合のある場合は -1 などにする
           }
           break;
       }
@@ -237,6 +242,9 @@ Diceros.VectorLayer.prototype.event = function(event) {
             var prevLine = this.currentLine;
 
             this.currentLine = ctrlPoint.lineIndex;
+
+            /** @type {number} */
+            event.deltaY;
 
             // XXX: magic number
             if (event.deltaY < 0) {
@@ -398,10 +406,9 @@ function(index) {
 
 /**
  * 描画
- * @param {?number} drawIndex 描画する線の index. null の場合は全て描画し直す.
+ * @param {number} drawIndex 描画する線の index. null の場合は全て描画し直す.
  */
-Diceros.VectorLayer.prototype.draw =
-function(drawIndex) {
+Diceros.VectorLayer.prototype.draw = function(drawIndex) {
   var canvas = this.canvas,
       ctx = this.ctx,
       tempctx = this.app.windows[this.app.currentCanvasWindow].tempctx;
@@ -442,12 +449,11 @@ function(drawIndex) {
 
 /**
  * 線描画実装
- * @param {2DContext} ctx 描画先のコンテキスト.
+ * @param {CanvasRenderingContext2D} ctx 描画先のコンテキスト.
  * @param {number} lineIndex 線の index.
  * @private
  */
-Diceros.VectorLayer.prototype.drawLineImpl_ =
-function(ctx, lineIndex) {
+Diceros.VectorLayer.prototype.drawLineImpl_ = function(ctx, lineIndex) {
   var line = this.lines[lineIndex];
 
   // 一時 context をクリア
@@ -465,8 +471,7 @@ function(ctx, lineIndex) {
  * 制御点の描画
  * @param {number=} opt_drawIndex 描画する線.省略時は全ての線の制御点を描画.
  */
-Diceros.VectorLayer.prototype.drawCtrlPoint =
-function(opt_drawIndex) {
+Diceros.VectorLayer.prototype.drawCtrlPoint = function(opt_drawIndex) {
   var ctx = this.app.windows[this.app.currentCanvasWindow].overlay.ctx;
 
   // XXX: クリアではなくオーバーレイ自体を表示/非表示でも良いかも知れない

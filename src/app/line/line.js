@@ -58,7 +58,8 @@ Diceros.Line.prototype.draw = goog.abstractMethod;
 
 /**
  * 概ねの描画
- * @param {Object} context 描画するコンテキスト.
+ * @param {CanvasRenderingContext2D} context 描画するコンテキスト.
+ * @param {number=} opt_width 太さ.
  * XXX: context の型が不明なのでとりあえず省略とする.
  */
 Diceros.Line.prototype.drawOutline = goog.abstractMethod;

@@ -22,7 +22,7 @@
   <target name="deps" depends="prebuild" description="依存関係を解決する deps.js を作成する">
     <exec dir="." executable="python" failonerror="true">
       <arg line="${vendor}/google-closure-library/closure/bin/build/depswriter.py"/>
-      <arg line="--root_with_prefix=&quot;${src}/app ../../../../../trunk/src/app&quot;"/>
+      <arg line="--root_with_prefix=&quot;${src}/app ../../../../src/app&quot;"/>
       <arg line="--output_file=${bin}/deps.js "/>
     </exec>
   </target>
@@ -40,12 +40,18 @@
   </target>
 
   <!-- デバッグ版のビルド -->
-  <target name="debug" depends="prebuild" description="デバッグ版のファイル debug.js を作成する">
+  <target name="debug" depends="prebuild, deps" description="デバッグ版のファイル debug.js を作成する">
     <exec dir="." executable="python" failonerror="true">
       <arg line="${vendor}/google-closure-library/closure/bin/build/closurebuilder.py"/>
       <arg line="-c ${vendor}/google-closure-compiler/compiler.jar"/>
       <arg line="-f &quot;--compilation_level=ADVANCED_OPTIMIZATIONS&quot;"/>
       <arg line="-f &quot;--externs=${src}/app/externs.js&quot;"/>
+
+      <arg line="-f &quot;--warning_level=VERBOSE&quot;"/>
+      <arg line="-f &quot;--output_wrapper='(function() {%output%}).call(this);'&quot;"/>
+      <arg line="-f &quot;--summary_detail_level=3&quot;"/>
+      <arg line="-f &quot;--language_in=ECMASCRIPT5_STRICT&quot;"/>
+
       <arg line="--root=${vendor}/google-closure-library"/>
       <arg line="--root=${src}/app"/>
       <arg line="--namespace=Diceros.Main"/>
@@ -55,13 +61,19 @@
   </target>
 
   <!-- リリース版のビルド -->
-  <target name="release" depends="prebuild" description="リリース版のファイル release.js を作成する">
+  <target name="release" depends="prebuild, deps" description="リリース版のファイル release.js を作成する">
     <exec dir="." executable="python" failonerror="true">
       <arg line="${vendor}/google-closure-library/closure/bin/build/closurebuilder.py"/>
       <arg line="-c ${vendor}/google-closure-compiler/compiler.jar"/>
       <arg line="-f &quot;--compilation_level=ADVANCED_OPTIMIZATIONS&quot;"/>
       <arg line="-f &quot;--externs=${src}/app/externs.js&quot;"/>
       <arg line="-f &quot;--define=goog.DEBUG=false&quot;"/>
+
+      <arg line="-f &quot;--warning_level=VERBOSE&quot;"/>
+      <arg line="-f &quot;--output_wrapper='(function() {%output%}).call(this);'&quot;"/>
+      <arg line="-f &quot;--summary_detail_level=3&quot;"/>
+      <arg line="-f &quot;--language_in=ECMASCRIPT5_STRICT&quot;"/>
+
       <arg line="--root=${vendor}/google-closure-library"/>
       <arg line="--root=${src}/app"/>
       <arg line="--namespace=Diceros.Main"/>

@@ -9,18 +9,20 @@ goog.scope(function() {
 /**
  * アプリケーションメインクラス
  * @constructor
- * @param {string} targetId アプリケーション用の DIV 要素
+ * @param {!Element} target アプリケーション用の DIV 要素
  * @param {Object=} opt_config アプリケーション設定
  */
-Diceros.Main = function(targetId, opt_config) {
+Diceros.Main = function(target, opt_config) {
   if (!opt_config) {
     opt_config = {};
   }
 
-  /** @type {HTMLElement} */
-  this.target = goog.dom.getElement(targetId);
+  /** @type {!Element} */
+  this.target = target;
   /** @type {Diceros.Application} */
   this.diceros = new Diceros.Application(opt_config);
+  /** @type {Object} */
+  this.config = opt_config;
 };
 
 /**
@@ -28,9 +30,11 @@ Diceros.Main = function(targetId, opt_config) {
  */
 Diceros.Main.prototype.init = function() {
   var target = this.target;
+  var config = this.config;
 
-  goog.style.setStyle(target, 'width',  (opt_config.width  || 1024) + 'px');
-  goog.style.setStyle(target, 'height', (opt_config.height ||  768) + 'px');
+  goog.style.setStyle(target, 'width',  (config.width  || 1024) + 'px');
+  goog.style.setStyle(target, 'height', (config.height ||  768) + 'px');
+
   this.diceros.render(target);
 };
 

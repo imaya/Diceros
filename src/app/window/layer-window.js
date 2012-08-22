@@ -30,19 +30,17 @@ goog.scope(function(){
  * @extends {Diceros.Window}
  * @constructor
  */
-Diceros.LayerWindow =
-function(app, index, opt_domHelper) {
+Diceros.LayerWindow = function(app, index, opt_domHelper) {
   goog.base(this, app, index, opt_domHelper);
-  //Diceros.Window.call(this, app, index, opt_domHelper);
 
+  /** @type {string} */
   this.name = 'LayerWindow';
-  this.element = null;
-  this.layerListElement = null;
+  /** @type {!Element} */
+  this.element;
+  /** @type {!Element} */
+  this.layerListElement;
 };
-goog.inherits(
-  Diceros.LayerWindow,
-  Diceros.Window
-);
+goog.inherits(Diceros.LayerWindow, Diceros.Window);
 
 /**
  * CSS クラス名
@@ -60,8 +58,7 @@ Diceros.LayerWindow.prototype.canDecorate = function() {
 /**
  * コンポーネントの初期化処理
  */
-Diceros.LayerWindow.prototype.decorateInternal =
-function(element){
+Diceros.LayerWindow.prototype.decorateInternal = function(element){
   goog.base(this, 'decorateInternal', element);
 
   // ルートノード
