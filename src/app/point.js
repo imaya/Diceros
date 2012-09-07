@@ -90,14 +90,9 @@ Diceros.Point.prototype.getPressure = function(opt_event) {
   /** @type {TouchEvent} */
   var touchEvent;
 
-  // プラグイン未検出
-  if (!plugin || !plugin['penAPI']) {
-    Diceros.Point.plugin = null;
-    return 1;
-  }
-
   // Wacom プラグイン
-  if (plugin['penAPI']) {
+  if (plugin && plugin['penAPI'] && plugin['penAPI']['isWacom'] &&
+    plugin['penAPI']['pointerType'] === 1) {
     return plugin['penAPI']['pressure'];
   }
 
@@ -119,6 +114,8 @@ Diceros.Point.prototype.getPressure = function(opt_event) {
     }
   }
 
+  // プラグイン未検出
+  Diceros.Point.plugin = null;
   return 1;
 };
 
