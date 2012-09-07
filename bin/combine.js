@@ -37607,32 +37607,25 @@ Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
  * @return {number} 筆圧(0.0-1.0).
  */
 Diceros.Point.prototype.getPressure = function(opt_event) {
-  /** @type {Object} */
-  var plugin = this.getPlugin();
+  /** @type {HTMLElement} */
+  var plugin = this.getWacomPlugin();
   /** @type {Event} */
   var browserEvent;
   /** @type {TouchEvent} */
   var touchEvent;
 
   // プラグイン未検出
-  if (typeof plugin !== 'object' && typeof plugin !== 'function') {
+  if (!plugin || !plugin['penAPI']) {
     Diceros.Point.plugin = null;
     return 1;
   }
 
   // Wacom プラグイン
-  if (plugin.isWacom) {
-    // 2 = Mouse
-    if (plugin.pointerType === 2 || plugin.pointerType === 0) {
-      return 1;
-    }
-
-    /** @type {number} */
-    plugin.pressure;
-
-    return plugin.pressure;
+  if (plugin['penAPI']) {
+    return plugin['penAPI']['pressure'];
   }
 
+  // Touch イベント
   if (opt_event !== void 0) {
     browserEvent = opt_event.getBrowserEvent();
 
@@ -37657,10 +37650,18 @@ Diceros.Point.prototype.getPressure = function(opt_event) {
  * ペンタブレットのプラグイン
  * @return {Object} wacom plugin.
  */
-Diceros.Point.prototype.getPlugin = function() {
-  return document.embeds['wacom-plugin'];
-}
+Diceros.Point.prototype.getWacomPlugin = function() {
+  return document.querySelector('object[type="application/x-wacomtabletplugin"]');
+};
 
+// ロード確認
+window.addEventListener('DOMContentLoaded', function() {
+  var plugin = Diceros.Point.prototype.getWacomPlugin();
+
+  if (plugin && plugin['penAPI']) {
+    goog.global.console.log('wacom-plugin: version ' + plugin.version);
+  }
+}, false);
 
 // end of scope
 });

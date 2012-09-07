@@ -24,7 +24,8 @@
 
 <div id="application"></div>
 
-<embed name="wacom-plugin" id="wacom-plugin" type="application/x-wacom-tablet" hidden="true"></embed>
+<!-- embed name="wacom-plugin" id="wacom-plugin" type="application/x-wacom-tablet" hidden="true"></embed -->
+<object id="wacom-plugin" type="application/x-wacomtabletplugin" style="width: 0px; height: 0px;"></object>
 
 <script>
   var diceros = new Diceros.Main(document.getElementById('application'), {width: window.innerWidth, height: window.innerHeight});
