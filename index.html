@@ -4,12 +4,15 @@
   <meta charset="utf-8" />
   <link rel="stylesheet" href="./css/diceros.css" />
   <link rel="stylesheet" href="./css/closure.css" />
+  <link rel="stylesheet" href="./css/colormenubutton.css" />
+  <link rel="stylesheet" href="./css/colorpalette.css" />
   <title>Diceros demo</title>
   <script src="./release.js?"></script>
 </head>
 
-<body>
+<body style="margin: 0px;">
 
+<!--
 <h1>Diceros demo</h1>
 
 <ul>
@@ -17,14 +20,18 @@
   <li>Alt: 制御点の表示</li>
   <li>Alt+ホイール: 線の太さを調整(制御点上)</li>
 </ul>
+-->
 
 <div id="application"></div>
 
 <embed name="wacom-plugin" id="wacom-plugin" type="application/x-wacom-tablet" hidden="true"></embed>
 
 <script>
-  var body = document.body;
-  new Diceros.Main('application', {width: 1024, height: 768});
+  var diceros = new Diceros.Main(document.getElementById('application'), {width: window.innerWidth, height: window.innerHeight});
+  diceros.init();
+  document.body.style.width = window.innerWidth + 'px';
+  document.body.style.margin = 0 + 'px';
+
 </script>
 
 </body>
