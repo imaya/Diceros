@@ -24,11 +24,11 @@ ul.diceros-layerWindowMenu ul {
 
 .goog-splitpane-first-container {
 	border: 1px solid #6b90da;
-	overflow: scroll;
+	overflow: hidden;
 }
 .goog-splitpane-second-container {
 	border: 1px solid #6b90da;
-	overflow: scroll;
+	overflow: hidden;
 }
 .goog-splitpane-handle {
 	background: #ccc;

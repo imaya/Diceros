@@ -1,6 +1,7 @@
 goog.provide('Diceros.BezierAGG');
 
 goog.require('Diceros.Line');
+goog.require('Diceros.LinePath');
 
 goog.scope(function() {
 
@@ -10,9 +11,10 @@ goog.scope(function() {
  * http://www.antigrain.com/research/bezier_interpolation/index.html
  * @extends Diceros.Line
  * @constructor
+ * @param {string=} opt_color 線の描画色.
  */
-Diceros.BezierAGG = function() {
-  goog.base(this);
+Diceros.BezierAGG = function(opt_color) {
+  goog.base(this, opt_color);
 
   this.name = 'BezierAGG';
   this.curveCtrlPoints = []; // ベジェ曲線用の制御点
@@ -119,19 +121,40 @@ Diceros.BezierAGG.prototype.updateControlPoint = function(index, point) {
 
 
 /**
- * 描画
- * @param {Object} ctx 描画するコンテキスト.
+ * アウトラインのパスを求める.
  * @param {number=} opt_width 幅を固定する場合は指定する.
+ * @param {string=} opt_color 色を固定する場合は指定する.
+ * @return {{
+ *   path: Diceros.LinePath,
+ *   x: number,
+ *   y: number,
+ *   width: number,
+ *   height, number
+ * }} 描画コンテキスト.
  */
-Diceros.BezierAGG.prototype.drawOutline = function(ctx, opt_width) {
+Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color) {
   var data = this.ctrlPoints,
-      ctrlPoints = this.getCtrlPointsAGG_(data, this.curveCtrlPoints),
-      defaultWidth = ctx.lineWidth,
-      defaultLineCap = ctx.lineCap;
+      ctrlPoints = this.getCtrlPointsAGG_(data, this.curveCtrlPoints);
+  var width;
+  var x;
+  var y;
+  var minX = Infinity;
+  var maxX = -Infinity;
+  var minY = Infinity;
+  var maxY = -Infinity;
+
+  /** @type {Diceros.LinePath} */
+  var ctx = new Diceros.LinePath();
+
+  ctx.color = opt_color || this.color;
 
   ctx.beginPath();
-  ctx.lineCap = 'round';
-  ctx.moveTo(data[0].x, data[0].y);
+  x = data[0].x + 0.5 | 0; y = data[0].y + 0.5 | 0;
+  ctx.moveTo(x, y);
+
+  // update area
+  if (x < minX) { minX = x; } if (x > maxX) { maxX = x; }
+  if (y < minY) { minY = y; } if (y > maxY) { maxY = y; }
 
   // 描画
   for (var li = 1, ll = data.length; li < ll; li++) {
@@ -139,26 +162,44 @@ Diceros.BezierAGG.prototype.drawOutline = function(ctx, opt_width) {
         point = data[li],
         cp = ctrlPoints[li - 1];
 
+    width = (opt_width !== void 0) ? opt_width : prev.width + point.width;
+
+    // update area
+    x = prev.x + 0.5 | 0; y = prev.y + 0.5 | 0;
+    if (x - width < minX) { minX = x - width; } if (x + width > maxX) { maxX = x + width; }
+    if (y - width < minY) { minY = y - width; } if (y + width > maxY) { maxY = y + width; }
+    x = point.x + 0.5 | 0; y = point.y + 0.5 | 0;
+    if (x - width < minX) { minX = x - width; } if (x + width > maxX) { maxX = x + width; }
+    if (y - width < minY) { minY = y - width; } if (y + width > maxY) { maxY = y + width; }
+
     switch (cp.length) {
     case 0:
-      ctx.lineTo(point.x, point.y);
+      ctx.lineTo(point.x + 0.5 | 0, point.y + 0.5 | 0);
       break;
     case 2:
       ctx.bezierCurveTo(
-        cp[0].x, cp[0].y,
-        cp[1].x, cp[1].y,
-        point.x, point.y
+        cp[0].x + 0.5 | 0, cp[0].y + 0.5 | 0,
+        cp[1].x + 0.5 | 0, cp[1].y + 0.5 | 0,
+        point.x + 0.5 | 0, point.y +0.5 | 0
       );
+
+      // update area
+      x = cp[0].x + 0.5 | 0; y = cp[0].y + 0.5 | 0;
+      if (x - width < minX) { minX = x - width; } if (x + width > maxX) { maxX = x + width; }
+      if (y - width < minY) { minY = y - width; } if (y + width > maxY) { maxY = y + width; }
+      x = cp[1].x + 0.5 | 0; y = cp[1].y + 0.5 | 0;
+      if (x - width < minX) { minX = x - width; } if (x + width > maxX) { maxX = x + width; }
+      if (y - width < minY) { minY = y - width; } if (y + width > maxY) { maxY = y + width; }
       break;
     default:
       throw 'invalid control points';
     }
 
     if (opt_width === void 0) {
-      ctx.lineWidth = (prev.width + point.width);
+      ctx.lineWidth = prev.width + point.width;
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(point.x, point.y);
+      ctx.moveTo(point.x | 0, point.y | 0);
     }
   }
 
@@ -167,24 +208,40 @@ Diceros.BezierAGG.prototype.drawOutline = function(ctx, opt_width) {
     ctx.stroke();
   }
 
-  ctx.lineWidth = defaultWidth;
-  ctx.lineCap = defaultLineCap;
+  ctx.x = minX;
+  ctx.y = minY;
+  ctx.width = maxX - minX;
+  ctx.height = maxY - minY;
+
+  return minX === Infinity ? null : ctx;
 };
 
 
 /**
  * 描画
- * @param {Object} ctx 描画するコンテキスト.
+ * @param {string=} opt_color 色を指定する.
  */
-Diceros.BezierAGG.prototype.draw = function(ctx) {
+Diceros.BezierAGG.prototype.path = function(opt_color) {
   var data = this.ctrlPoints,
       ctrlPoints = this.getCtrlPointsAGG_(data, this.curveCtrlPoints),
       bezierLines = [[], []], // 素のベジェ曲線パラメータを入れておく箱
       point, next, cp;
+  var minX = Infinity;
+  var maxX = -Infinity;
+  var minY = Infinity;
+  var maxY = -Infinity;
+  var x;
+  var y;
+  var radius;
+  var cp1;
+  var cp2;
+
+  var ctx = new Diceros.LinePath();
+
+  ctx.color = opt_color || this.color;
 
   // 描画
   ctx.beginPath();
-  ctx.fillStyle = 'rgb(0,0,0)'; // XXX
 
   /*
   // 始点、終点の描画
@@ -203,8 +260,6 @@ Diceros.BezierAGG.prototype.draw = function(ctx) {
     ctx.arc(point.x, point.y, point.width, 0, 7, false); // 7 > 2 * Math.PI
   }*/
 
-
-
   // 線の計算
   for (var i = 0, l = data.length - 1; i < l; i++) {
     point = data[i],
@@ -220,7 +275,7 @@ Diceros.BezierAGG.prototype.draw = function(ctx) {
     switch (cp.length) {
     case 2:
       this.drawBezierSegmentAGG_(
-        ctx, point, cp[0], cp[1], next, i, bezierLines
+        point, cp[0], cp[1], next, i, bezierLines
       );
       break;
     }
@@ -237,6 +292,7 @@ Diceros.BezierAGG.prototype.draw = function(ctx) {
       if (j === 0) {
         var prevPoint, rad;
 
+        // 曲線の最初の点を描画
         if (i === 0) {
           var prevLines = bezierLines[il-1],
               prevLine = prevLines[prevLines.length-1];
@@ -253,34 +309,53 @@ Diceros.BezierAGG.prototype.draw = function(ctx) {
             prevPoint.y - line.start.y,
             prevPoint.x - line.start.x
           );
-
         }
-        ctx.arc(
-          (prevPoint.x + line.start.x) / 2,
-          (prevPoint.y + line.start.y) / 2,
-          this.pythagorean_(prevPoint, line.start) / 2,
-          rad,
-          rad + Math.PI,
-          true
-        );
+        x = (prevPoint.x + line.start.x) / 2;
+        y = (prevPoint.y + line.start.y) / 2;
+        radius = this.pythagorean_(prevPoint, line.start) / 2;
+
+        // update copy area
+        if (x - radius < minX) { minX = x - radius; }
+        if (x + radius > maxX) { maxX = x + radius; }
+        if (y - radius < minY) { minY = y - radius; }
+        if (y + radius > maxY) { maxY = y + radius; }
+
+        ctx.arc(x, y, radius, rad, rad + Math.PI, true);
       }
 
-      ctx.bezierCurveTo(
-        line.cp[0].x, line.cp[0].y,
-        line.cp[1].x, line.cp[1].y,
-        line.end.x, line.end.y
-      );
+      cp1 = line.cp[0];
+      cp2 = line.cp[1];
+      x = line.end.x;
+      y = line.end.y;
+
+      ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, x, y);
+
+      // update copy area
+      if (cp1.x < minX) { minX = cp1.x; } if (cp1.x > maxX) { maxX = cp1.x; }
+      if (cp1.y < minY) { minY = cp1.y; } if (cp1.y > maxY) { maxY = cp1.y; }
+      if (cp2.x < minX) { minX = cp2.x; } if (cp2.x > maxX) { maxX = cp2.x; }
+      if (cp2.y < minY) { minY = cp2.y; } if (cp2.y > maxY) { maxY = cp2.y; }
+      if (    x < minX) { minX =     x; } if (    x > maxX) { maxX =     x; }
+      if (    y < minY) { minY =     y; } if (    y > maxY) { maxY =     y; }
+
       prev = line;
     }
   }
 
+  ctx.fillStyle = 'rgb(0,0,0)'; // XXX
   ctx.fill();
+
+  ctx.x = minX;
+  ctx.y = minY;
+  ctx.width = maxX - minX;
+  ctx.height = maxY - minY;
+
+  return minX === Infinity ? null : ctx;
 };
 
 
 /**
  * ベジェ曲線の一部を描画
- * @param {Object} ctx 描画用コンテキスト.
  * @param {Diceros.Point} s 始点.
  * @param {Diceros.Point} c1 制御点1.
  * @param {Diceros.Point} c2 制御点2.
@@ -290,7 +365,7 @@ Diceros.BezierAGG.prototype.draw = function(ctx) {
  * @private
  */
 Diceros.BezierAGG.prototype.drawBezierSegmentAGG_ =
-function(ctx, s, c1, c2, e, index, bezierLines) {
+function(s, c1, c2, e, index, bezierLines) {
   var line1, line2, tmp, cps1, cps2, scps, endAngle1, endAngle2;
 
   // 分割した制御点などを計算する
@@ -320,8 +395,6 @@ function(ctx, s, c1, c2, e, index, bezierLines) {
     line2 = scps.line2;
     cps1 = scps.cps1;
     cps2 = scps.cps2;
-    endAngle1 = scps.endAngle1;
-    endAngle2 = scps.endAngle2;
   }
 
   // 描画すべきベジェ曲線を配列に入れていく
@@ -574,6 +647,79 @@ function(s, c1, c2, e, depth, opt_l1, opt_l2) {
   };
 };
 
+Diceros.BezierAGG.prototype.optimize = function() {
+  var ctrlPoints = this.ctrlPoints;
+  var curvePoints = this.curveCtrlPoints;
+  var i;
+  var optimizeValue;
+  var prev = ctrlPoints.length;
+
+  for (i = 0; i < ctrlPoints.length - 2;) {
+    optimizeValue = this.checkRemoval(
+      ctrlPoints[i], ctrlPoints[i+1], ctrlPoints[i+2],
+      curvePoints[i][0], curvePoints[i][1],
+      curvePoints[i+1][0], curvePoints[i+1][1]
+    );
+    if (optimizeValue.distance < 3) {
+      ctrlPoints.splice(i + 1, 1);
+      curvePoints.splice(i + 1, 1);
+      curvePoints[i][0] = optimizeValue.newCtrlPoint1;
+      curvePoints[i][1] = optimizeValue.newCtrlPoint2;
+    } else {
+      i++
+    }
+  }
+
+  if (ctrlPoints.length < prev) {
+    this.subCtrlPoints = [];
+  }
+};
+
+/**
+ * @param {Diceros.Point} p0 ベジェ曲線上の点1.
+ * @param {Diceros.Point} p1 ベジェ曲線上の点2.
+ * @param {Diceros.Point} p2 ベジェ曲線上の点3.
+ * @return {boolean} 省略可能ならばtrueを返す.
+ * curveCtrlPoints... 制御点
+ * ctrlPoints... ベジェ曲線上の点
+ */
+Diceros.BezierAGG.prototype.checkRemoval = function(p0, p1, p2, cp00, cp01, cp10, cp11) {
+  var edge0 = this.pythagorean_(p1, cp01);
+  var edge1 = this.pythagorean_(p1, cp11);
+  var ratio0 = edge1 / edge0;
+  var ratio1 = edge0 / edge1;
+  var cross = this.calcCrossPoint(cp00, cp01, cp10, cp11);
+  var cp02 = {
+    x: cp01.x + (cp01.x - p0.x) * ratio0,
+    y: cp01.y + (cp01.y - p0.y) * ratio0
+  };
+  var cp12 = {
+    x: cp11.x + (cp11.x - p2.x) * ratio1,
+    y: cp11.y + (cp11.y - p2.y) * ratio1
+  };
+  var cp = {
+    x: cp02.x + (cp12.x - cp02.x) * (edge0 + edge1) / edge0,
+    y: cp02.y + (cp12.y - cp02.y) * (edge0 + edge1) / edge0
+  };
+
+  // TODO: width も t:1-s に収まっているか調べる
+
+  return {
+    distance: this.pythagorean_(cp, cross),
+    newCtrlPoint1: cp02,
+    newCtrlPoint2: cp12
+  };
+};
+
+Diceros.BezierAGG.prototype.calcCrossPoint = function(p0, p1, p2, p3) {
+  var s1 = ((p3.x - p2.x) * (p0.y - p2.y) - (p3.y - p2.y) * (p0.x - p2.x)) / 2;
+  var s2 = ((p3.x - p2.x) * (p2.y - p1.y) - (p3.y - p2.y) * (p2.x - p1.x)) / 2;
+
+  return {
+    x: p0.x + (p1.x - p0.x) * s1 / (s1 + s2),
+    y: p0.y + (p1.y - p0.y) * s1 / (s1 + s2)
+  };
+};
 
 /**
  * 2点を結ぶ線分を t:1-t で分けた点を返す

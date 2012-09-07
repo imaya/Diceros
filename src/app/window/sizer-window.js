@@ -64,6 +64,8 @@ Diceros.SizerWindow.prototype.decorateInternal = function(element) {
     Diceros.SizerWindow.CLASS_NAME_
   );
 
+  element.style.overflow = 'hidden';
+
   // サイズ表示用
   this.canvas = this.app.makeCanvas(this.width, this.width); // XXX: magic number
   goog.style.setStyle(this.canvas, 'border', 1);
@@ -83,12 +85,11 @@ Diceros.SizerWindow.prototype.setEvent = function() {
   goog.events.listen(this.canvas, goog.events.EventType.MOUSEUP, onEnd);
   goog.events.listen(this.canvas, goog.events.EventType.MOUSEMOVE, onMove);
   goog.events.listen(this.canvas, goog.events.EventType.MOUSEOUT, onOut);
-
   // touch
   // XXX: タッチ時は別の仕組みの方がよいかもしれない
-  goog.events.listen(this.canvas, goog.events.EventType.TOUCHSTART, onStart);
-  goog.events.listen(this.canvas, goog.events.EventType.TOUCHEND, onEnd);
-  goog.events.listen(this.canvas, goog.events.EventType.TOUCHMOVE, onMove);
+  goog.events.listen(this.canvas, goog.events.EventType.TOUCHSTART, onTouchStart);
+  goog.events.listen(this.canvas, goog.events.EventType.TOUCHEND, onTouchEnd);
+  goog.events.listen(this.canvas, goog.events.EventType.TOUCHMOVE, onTouchMove);
 
   function onStart(e){
     that.leftDrag = true;
@@ -110,6 +111,45 @@ Diceros.SizerWindow.prototype.setEvent = function() {
 
       that.refresh();
     }
+  }
+
+  function onTouchStart(e){
+    var offset = goog.style.getPageOffset(e.target);
+
+    that.leftDrag = true;
+    that.size = that.pointToSize_(new goog.math.Coordinate(
+      e.getBrowserEvent().changedTouches[0].pageX - offset.x,
+      e.getBrowserEvent().changedTouches[0].pageY - offset.y
+    ));
+
+    that.refresh();
+  }
+
+  function onTouchEnd(e){
+    var offset = goog.style.getPageOffset(e.target);
+
+    that.leftDrag = false;
+    that.size = that.pointToSize_(new goog.math.Coordinate(
+      e.getBrowserEvent().changedTouches[0].pageX - offset.x,
+      e.getBrowserEvent().changedTouches[0].pageY - offset.y
+    ));
+
+    that.refresh();
+
+    e.stopPropagation();
+  }
+
+  function onTouchMove(e){
+    var offset = goog.style.getPageOffset(e.target);
+
+    that.size = that.pointToSize_(new goog.math.Coordinate(
+      e.getBrowserEvent().changedTouches[0].pageX - offset.x,
+      e.getBrowserEvent().changedTouches[0].pageY - offset.y
+    ));
+
+    that.refresh();
+
+    e.preventDefault();
   }
 
   function onOut(e){

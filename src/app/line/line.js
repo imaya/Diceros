@@ -4,9 +4,10 @@ goog.scope(function() {
 
 /**
  * 線描画抽象クラス
+ * @param {string=} opt_color 線の描画色
  * @constructor
  */
-Diceros.Line = function() {
+Diceros.Line = function(opt_color) {
   /**
    * クラス名
    * @type {string}
@@ -19,6 +20,11 @@ Diceros.Line = function() {
    * XXX: 何の配列か書く
    */
   this.ctrlPoints = [];
+
+  /**
+   * @type {string}
+   */
+  this.color = opt_color;
 }
 
 

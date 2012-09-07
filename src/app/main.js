@@ -40,6 +40,7 @@ Diceros.Main.prototype.init = function() {
 
 // Diceros.Main として外から利用できるようにする
 goog.exportSymbol('Diceros.Main', Diceros.Main);
+goog.exportSymbol('Diceros.Main.prototype.init', Diceros.Main.prototype.init);
 
 // end of scope
 });

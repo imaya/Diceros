@@ -18,9 +18,16 @@ goog.require('Diceros.util');
 goog.require('goog.dom');
 goog.require('goog.events');
 goog.require('goog.math.Size');
+goog.require('goog.array');
 goog.require('goog.object');
 goog.require('goog.ui.SplitPane');
+goog.require('goog.ui.ToolbarToggleButton');
+goog.require('goog.ui.ToolbarButton');
+goog.require('goog.ui.SelectionModel');
 
+goog.require('goog.ui.ToolbarColorMenuButton');
+goog.require('goog.ui.ToolbarColorMenuButtonRenderer');
+goog.require('goog.ui.ToolbarSeparator');
 
 goog.scope(function() {
 
@@ -81,6 +88,10 @@ Diceros.Application = function(opt_config) {
    * @type {Object}
    */
   this.layoutPanels = {};
+  /**
+   * @type {goog.ui.Toolbar}
+   */
+  this.toolbar;
 };
 
 /**
@@ -108,12 +119,12 @@ Diceros.Application.prototype.layout = function() {
 
   // 配置
 
-  // サイズウィンドウとレイヤーウィンドウをツールパネルに
+  // サイズとレイヤーウィンドウをツールパネルに
   layout.toolSplitPane = new goog.ui.SplitPane(
     sizer, layer,
     goog.ui.SplitPane.Orientation.VERTICAL
   );
-  layout.toolSplitPane.setInitialSize(100);
+  layout.toolSplitPane.setInitialSize(200);
   layout.toolSplitPane.setContinuousResize(true);
   layout.toolSplitPane.resize = function(size) {
     layout.toolSplitPane.setSize(size.width, size.height);
@@ -127,19 +138,13 @@ Diceros.Application.prototype.layout = function() {
   layout.baseSplitPane.setInitialSize(this.width - 200);
   layout.baseSplitPane.setContinuousResize(true);
 
+  // ツールバー
+  this.createToolbar();
+
   // 適用
   layout.baseSplitPane.render(this.target);
   layout.baseSplitPane.setSize(new goog.math.Size(this.width, this.height));
   layout.toolSplitPane.setSize(new goog.math.Size(layout.toolSplitPane.getFirstComponentSize().width, height));
-
-  // スタイル変更
-  layout.toolSplitPane.getFirstContainer = function(){
-    return this.firstComponentContainer_;
-  };
-  goog.style.setStyle(
-    layout.toolSplitPane.getFirstContainer(),
-    'overflow', 'hidden'
-  );
 };
 
 /**
@@ -176,6 +181,15 @@ Diceros.Application.prototype.addWindow = function(type) {
       this.sizerWindow = currentSize;
     } else {
       return this.windows[this.sizerWindow];
+    }
+    break;
+  case Diceros.WindowType.COLORPICK_WINDOW:
+    // singleton
+    if (typeof this.colorpickWindow !== 'number') {
+      newWindow = new Diceros.ColorPickWindow(this, currentSize);
+      this.colorPickWindow = currentSize;
+    } else {
+      return this.windows[this.colorPickWindow];
     }
     break;
   default:
@@ -279,6 +293,96 @@ Diceros.Application.prototype.setEvent = function() {
     }
   );
 };
+/**
+ * ツールバーの作成
+ */
+Diceros.Application.prototype.createToolbar = function() {
+  var toolbar = this.toolbar = new goog.ui.Toolbar();
+  var selectionModel = new goog.ui.SelectionModel();
+  var that = this;
 
+  toolbar.modeButtons = {
+    '描画': {
+      value: Diceros.VectorLayer.Mode.DEFAULT
+    },
+    '編集': {
+      value: Diceros.VectorLayer.Mode.EDIT
+    }
+  };
+
+  // colorpicker
+  toolbar.colorButton = new goog.ui.ToolbarColorMenuButton('Color');
+  toolbar.colorButton.setSelectedColor('black');
+  toolbar.addChild(toolbar.colorButton, true);
+
+  // separator
+  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
+
+  // mode switch button
+  selectionModel.setSelectionHandler(function(button, select) {
+    button && button.setChecked(select);
+  });
+  goog.object.forEach(
+    this.toolbar.modeButtons,
+    function(obj, caption) {
+      var button = that.toolbar.modeButtons[caption].button =
+        new goog.ui.ToolbarToggleButton(caption);
+
+      button.setValue(obj.value);
+      button.setAutoStates(goog.ui.Component.State.CHECKED, false);
+      selectionModel.addItem(button);
+      toolbar.addChild(button, true);
+      goog.events.listen(
+        button, goog.ui.Component.EventType.ACTION, onClickSelectButton);
+    }
+  );
+  function onClickSelectButton(e) {
+    var canvasWindow = that.windows[that.currentCanvasWindow];
+    var currentLayer = canvasWindow.layers[canvasWindow.currentLayer];
+
+    selectionModel.setSelectedItem(e.target);
+
+    if (currentLayer instanceof Diceros.VectorLayer) {
+      currentLayer.baseMode = currentLayer.mode = e.target.getValue();
+      currentLayer.switchMode(currentLayer.mode);
+    }
+
+    that.refreshToolbar();
+  }
+
+  this.refreshToolbar();
+
+  // rendering
+  toolbar.render(this.target);
+};
+
+Diceros.Application.prototype.refreshToolbar = function() {
+  var toolbar = this.toolbar;
+  var keys = Object.keys(toolbar.modeButtons);
+  var key;
+  var i;
+  var il;
+  var button;
+  var currentLayer;
+  var isVector;
+
+  for (i = 0, il = keys.length; i < il; ++i) {
+    key = keys[i];
+    button = toolbar.modeButtons[key].button;
+    currentLayer = this.getCurrentCanvasWindow().getCurrentLayer();
+    isVector = currentLayer instanceof Diceros.VectorLayer;
+
+    if (isVector) {
+      button.setEnabled(true);
+      button.setChecked(
+        currentLayer.mode === button.getValue()
+      );
+    } else {
+      button.setEnabled(false);
+    }
+  }
+};
+
+// end of scope
 });
 /* vim:set expandtab ts=2 sw=2 tw=80: */

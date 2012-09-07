@@ -114,10 +114,7 @@ Diceros.LayerWindow.prototype.createToolbar = function() {
     if (obj) {
       item = new goog.ui.MenuItem(obj.label);
       item.setValue(obj.type);
-      // XXX: 現状はベクタレイヤーのみ
-      if (obj.type !== Diceros.LayerType.VECTOR_LAYER) {
-        item.setEnabled(false);
-      }
+
       goog.events.listen(
         item,
         goog.ui.Component.EventType.ACTION,

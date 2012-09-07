@@ -42,12 +42,53 @@ Diceros.Point = function(x, y, opt_width, opt_noPressure) {
 };
 
 /**
+ * @param {goog.events.BrowserEvent} ev browser event.
+ * @param {number=} opt_baseWidth base point width.
+ * @return {Diceros.Point} new point object.
+ */
+Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
+  /** @type {Diceros.Point} */
+  var obj;
+  /** @type {number} */
+  var x;
+  /** @type {number} */
+  var y;
+  /** @type {number} */
+  var width;
+  /** @type {goog.math.Coordinate} */
+  var offset = goog.style.getPageOffset(ev.target);
+
+  // touch
+  if (ev.type.indexOf('touch') === 0) {
+    x = ev.getBrowserEvent().touches[0].pageX - offset.x; // XXX
+    y = ev.getBrowserEvent().touches[0].pageY - offset.y; // XXX
+  // mouse
+  } else {
+    x = ev.getBrowserEvent().pageX - offset.x;
+    y = ev.getBrowserEvent().pageY - offset.y;
+  }
+
+  obj = new Diceros.Point(x, y, opt_baseWidth, opt_noPressure);
+
+  if (!opt_noPressure) {
+    obj.width *= obj.getPressure(ev);
+  }
+
+  return obj;
+};
+
+/**
  * 筆圧を0.0-1.0の範囲で取得する
+ * @param {goog.events.BrowserEvent=} opt_event browser event object.
  * @return {number} 筆圧(0.0-1.0).
  */
-Diceros.Point.prototype.getPressure = function() {
+Diceros.Point.prototype.getPressure = function(opt_event) {
   /** @type {Object} */
   var plugin = this.getPlugin();
+  /** @type {Event} */
+  var browserEvent;
+  /** @type {TouchEvent} */
+  var touchEvent;
 
   // プラグイン未検出
   if (typeof plugin !== 'object' && typeof plugin !== 'function') {
@@ -68,13 +109,29 @@ Diceros.Point.prototype.getPressure = function() {
     return plugin.pressure;
   }
 
+  if (opt_event !== void 0) {
+    browserEvent = opt_event.getBrowserEvent();
+
+    // touch event
+    if (opt_event.type.indexOf('touch') === 0) {
+      touchEvent = browserEvent.touches[0];
+
+      // force property
+      if (typeof touchEvent['webkitForce'] === 'number') {
+        return touchEvent['webkitForce'];
+      }
+      if (typeof touchEvent['force'] === 'number') {
+        return touchEvent['force'];
+      }
+    }
+  }
+
   return 1;
 };
 
 /**
  * ペンタブレットのプラグイン
  * @return {Object} wacom plugin.
- * XXX: IE用のプラグイン検出も対応する必要がある
  */
 Diceros.Point.prototype.getPlugin = function() {
   return document.embeds['wacom-plugin'];

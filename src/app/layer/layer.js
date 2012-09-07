@@ -115,6 +115,13 @@ Diceros.Layer.prototype.hide = function() {
  */
 Diceros.Layer.prototype.event = goog.abstractMethod;
 
+/**
+ * 現在のペンのサイズを取得
+ * @return {number} 現在のペンサイズ
+ */
+Diceros.Layer.prototype.getCurrentPenSize = function() {
+  return this.app.getCurrentSizerWindow().size;
+};
 
 // end of scope
 });

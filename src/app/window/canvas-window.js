@@ -125,12 +125,18 @@ Diceros.CanvasWindow.prototype.createDom = function() {
  * イベントの設定
  */
 Diceros.CanvasWindow.prototype.setEvent = function() {
-  var self = this, canvasWindowEvent, handleEventList;
+  var self = this, canvasWindowEvent;
 
   // XXX: クラス定数にするか？
   canvasWindowEvent = {};
+
+  // move
+  canvasWindowEvent[goog.events.EventType.TOUCHMOVE] =
   canvasWindowEvent[goog.events.EventType.MOUSEMOVE] = function(event) {
     var layer = self.getCurrentLayer();
+
+    event.event_.preventDefault();
+    event.preventDefault();
 
     if (!layer) {
       return;
@@ -138,8 +144,14 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
 
     layer.event(event);
   };
+
+  // start
+  canvasWindowEvent[goog.events.EventType.TOUCHSTART] =
   canvasWindowEvent[goog.events.EventType.MOUSEDOWN] = function(event) {
     var layer = self.getCurrentLayer();
+
+    event.event_.preventDefault();
+    event.preventDefault();
 
     self.drag = true;
 
@@ -149,6 +161,9 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
 
     layer.event(event);
   };
+
+  // end
+  canvasWindowEvent[goog.events.EventType.TOUCHEND] =
   canvasWindowEvent[goog.events.EventType.MOUSEUP] = function(event) {
     var drag = self.drag, layer = self.getCurrentLayer();
 
@@ -162,6 +177,8 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
       layer.event(event);
     }
   };
+
+  // out
   canvasWindowEvent[goog.events.EventType.MOUSEOUT] = function(event) {
     var offset = goog.style.getPageOffset(self.element),
         x = event.pageX - offset.x,
@@ -177,6 +194,8 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
     event.type = goog.events.EventType.MOUSEUP;
     return canvasWindowEvent[event.type](event);
   };
+
+  // wheel
   canvasWindowEvent[goog.events.MouseWheelHandler.EventType.MOUSEWHEEL] =
   function(event) {
     var layer = self.getCurrentLayer();
@@ -188,15 +207,7 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
     event.preventDefault();
   };
 
-  handleEventList = [
-    goog.events.EventType.MOUSEMOVE,
-    goog.events.EventType.MOUSEDOWN,
-    goog.events.EventType.MOUSEUP,
-    goog.events.EventType.MOUSEOUT,
-    goog.events.MouseWheelHandler.EventType.MOUSEWHEEL
-  ];
-
-  goog.array.forEach(handleEventList, function(eventType){
+  goog.array.forEach(Object.keys(canvasWindowEvent), function(eventType){
     var element = this.element;
 
     if (eventType === goog.events.MouseWheelHandler.EventType.MOUSEWHEEL) {
@@ -215,8 +226,7 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
  * レイヤーの追加
  * @param {Diceros.LayerType} type
  */
-Diceros.CanvasWindow.prototype.addLayer =
-function (type) {
+Diceros.CanvasWindow.prototype.addLayer = function (type) {
   var newLayer, layersSize = this.layers.length;
 
   switch (type) {
@@ -231,10 +241,10 @@ function (type) {
   }
 
   newLayer.init();
-  goog.style.setStyle(newLayer.canvas, 'border', '1px solid black');
+  //goog.style.setStyle(newLayer.canvas, 'border', '1px solid black');
 
-  this.selectLayer(layersSize);
   this.layers.push(newLayer);
+  this.selectLayer(layersSize);
 
   // レイヤー一覧を更新 XXX: どこかでメソッド化
   if (typeof this.app.currentLayerWindow === 'number') {
@@ -246,18 +256,26 @@ function (type) {
  * レイヤーの選択
  * @param {number} index
  */
-Diceros.CanvasWindow.prototype.selectLayer =
-function(index) {
+Diceros.CanvasWindow.prototype.selectLayer = function(index) {
+  /** @type {Diceros.Layer} */
+  var currentLayer = this.layers[this.currentLayer];
+
+  // 現在のレイヤーの終了処理
+  if (currentLayer instanceof Diceros.VectorLayer) {
+    currentLayer.switchMode(Diceros.VectorLayer.Mode.DEFAULT);
+  }
+
   this.currentLayer = index;
+
+  // 現在のレイヤーのツールバーに更新
+  this.app.refreshToolbar();
 };
 
 /**
  * イベント発火時の座標がキャンバス内かどうかを判定する
- *
  * @param {Event} event
  */
-Diceros.CanvasWindow.prototype.checkCanvasArea =
-function(event) {
+Diceros.CanvasWindow.prototype.checkCanvasArea = function(event) {
   var offset, x, y;
 
   /** @type {Element} */
@@ -268,20 +286,14 @@ function(event) {
   y = event.pageY - offset.y;
 
   // canvas 内
-  if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
-    return true;
-  }
-
-  return false;
+  return (x >= 0 && x < this.width && y >= 0 && y < this.height);
 };
 
 /**
  * 現在選択中のレイヤーオブジェクトを返却する
- *
  * @return {Diceros.Layer}
  */
-Diceros.CanvasWindow.prototype.getCurrentLayer =
-function() {
+Diceros.CanvasWindow.prototype.getCurrentLayer = function() {
   return this.layers[this.currentLayer];
 };
 
