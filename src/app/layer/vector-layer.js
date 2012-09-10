@@ -118,6 +118,9 @@ Diceros.VectorLayer.prototype.event = function(event) {
     case Diceros.VectorLayer.Mode.EDIT:
       this.handleEventEdit(event);
       break;
+    case Diceros.VectorLayer.Mode.DELETE:
+      this.handleEventDelete(event);
+      break;
     default:
       // NOP
   }
@@ -140,6 +143,9 @@ Diceros.VectorLayer.prototype.event = function(event) {
   if (this.mode === Diceros.VectorLayer.Mode.EDIT) {
     this.drawCtrlPoint();
   }
+  if (this.mode === Diceros.VectorLayer.Mode.DELETE) {
+    this.drawCtrlPoint();
+  }
 };
 
 // reset
@@ -148,6 +154,7 @@ Diceros.VectorLayer.prototype.switchMode = function(mode) {
   this.clearCtrlPoint();
 
   switch (this.mode) {
+    case Diceros.VectorLayer.Mode.DELETE: /* FALLTHROUGH */
     case Diceros.VectorLayer.Mode.EDIT:
       this.drawCtrlPoint();
       break;
@@ -227,7 +234,7 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
       /* FALLTHROUGH */
     case goog.events.EventType.MOUSEDOWN:
       // 制御点が選択可能な位置ならば、その制御点を更新する
-      if (ctrlPoint !== null) {
+      if (ctrlPoint) {
         line = this.lines[ctrlPoint.lineIndex];
         width = (line.getCtrlPoints())[ctrlPoint.pointIndex].width;
 
@@ -248,7 +255,7 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
     case goog.events.EventType.MOUSEMOVE:
       // ドラッグ中
       if (this.app.getCurrentCanvasWindow().drag) {
-        if (ctrlPoint !== null) {
+        if (ctrlPoint) {
           width = (currentLine.getCtrlPoints())[ctrlPoint.pointIndex].width;
 
           currentLine.updateControlPoint(
@@ -283,7 +290,7 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
       break;
     // WHEEL
     case goog.events.MouseWheelHandler.EventType.MOUSEWHEEL:
-      if (ctrlPoint !== null) {
+      if (ctrlPoint) {
         // update current line
         this.currentLine = ctrlPoint.lineIndex;
         currentLine = this.lines[this.currentLine];
@@ -313,18 +320,50 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
         this.refreshCurrentLine();
       }
       break;
-    // KEY DOWN
-    case goog.events.EventType.KEYDOWN:
-      break;
-    // KEY UP
-    case goog.events.EventType.KEYUP:
+  }
+};
+
+/**
+ * @param {goog.events.BrowserEvent} event browser event.
+ */
+Diceros.VectorLayer.prototype.handleEventDelete = function(event) {
+  var ctrlPoint = this.currentCtrlPoint;
+  var currentLine = this.lines[this.currentLine];
+  var line;
+  var width;
+
+  switch (event.type) {
+    // START
+    case goog.events.EventType.TOUCHSTART:
+      this.updateCursor(event);
+      ctrlPoint = this.currentCtrlPoint;
+      currentLine = this.lines[this.currentLine];
+      /* FALLTHROUGH */
+    case goog.events.EventType.MOUSEDOWN:
+      // 制御点が選択可能な位置ならば、その制御点を更新する
+      if (ctrlPoint) {
+        line = this.lines[ctrlPoint.lineIndex];
+        width = (line.getCtrlPoints())[ctrlPoint.pointIndex].width;
+
+        this.currentLine = ctrlPoint.lineIndex;
+
+        // 制御点の更新
+        line.removeControlPoint(
+          ctrlPoint.pointIndex,
+          Diceros.Point.createFromEvent(event, width, true)
+        );
+
+        // 線の選択
+        this.selectLine();
+        this.refreshCurrentLine();
+      }
       break;
   }
 };
 
 /**
  * サンプリングを行う
-  * @param {goog.events.BrowserEvent} event Eventオブジェクト.
+ * @param {goog.events.BrowserEvent} event Eventオブジェクト.
  */
 Diceros.VectorLayer.prototype.sampling = function(event) {
   /** @type {Diceros.Line} */
@@ -348,6 +387,11 @@ Diceros.VectorLayer.prototype.drawNewline = function() {
   /** @type {CanvasRenderingContext2D} */
   var overlay = this.overlay;
 
+  // optimization
+  if (typeof line.optimize === 'function') {
+    line.optimize(this.app.toolbar.lineOptimization.getValue() | 0);
+  }
+
   // clear outline
   if (path) {
     overlay.clearRect(path.x - 2, path.y - 2, path.width + 4, path.height + 4);
@@ -355,7 +399,6 @@ Diceros.VectorLayer.prototype.drawNewline = function() {
   }
 
   // draw new line
-  //line.optimize();
   path = this.paths[lineIndex] = line.path();
   if (path) {
     path.draw(this.ctx);
@@ -498,9 +541,9 @@ Diceros.VectorLayer.prototype.updateCursor = function(event) {
     case Diceros.VectorLayer.Mode.DEFAULT:
       goog.style.setStyle(cssTarget, 'cursor', 'default');
       break;
+    case Diceros.VectorLayer.Mode.DELETE:
     case Diceros.VectorLayer.Mode.EDIT:
       ctrlPoint = this.checkCtrlPoint(x, y, width);
-
       if (ctrlPoint) {
         goog.style.setStyle(cssTarget, 'cursor', 'move');
       } else {

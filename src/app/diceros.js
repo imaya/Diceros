@@ -28,6 +28,8 @@ goog.require('goog.ui.SelectionModel');
 goog.require('goog.ui.ToolbarColorMenuButton');
 goog.require('goog.ui.ToolbarColorMenuButtonRenderer');
 goog.require('goog.ui.ToolbarSeparator');
+goog.require('goog.ui.Option');
+goog.require('goog.ui.ToolbarSelect');
 
 goog.scope(function() {
 
@@ -124,7 +126,7 @@ Diceros.Application.prototype.layout = function() {
     sizer, layer,
     goog.ui.SplitPane.Orientation.VERTICAL
   );
-  layout.toolSplitPane.setInitialSize(200);
+  layout.toolSplitPane.setInitialSize(150);
   layout.toolSplitPane.setContinuousResize(true);
   layout.toolSplitPane.resize = function(size) {
     layout.toolSplitPane.setSize(size.width, size.height);
@@ -135,7 +137,7 @@ Diceros.Application.prototype.layout = function() {
     canvas, layout.toolSplitPane,
     goog.ui.SplitPane.Orientation.HORIZONTAL
   );
-  layout.baseSplitPane.setInitialSize(this.width - 200);
+  layout.baseSplitPane.setInitialSize(this.width - 150);
   layout.baseSplitPane.setContinuousResize(true);
 
   // ツールバー
@@ -297,16 +299,27 @@ Diceros.Application.prototype.setEvent = function() {
  * ツールバーの作成
  */
 Diceros.Application.prototype.createToolbar = function() {
+  /** @type {goog.ui.Toolbar} */
   var toolbar = this.toolbar = new goog.ui.Toolbar();
+  /** @type {goog.ui.SelectionModel} */
   var selectionModel = new goog.ui.SelectionModel();
+  /** @type {Diceros.Application} */
   var that = this;
+  /** @type {number} */
+  var i;
 
   toolbar.modeButtons = {
     '描画': {
-      value: Diceros.VectorLayer.Mode.DEFAULT
+      value: Diceros.VectorLayer.Mode.DEFAULT,
+      button: void 0
     },
     '編集': {
-      value: Diceros.VectorLayer.Mode.EDIT
+      value: Diceros.VectorLayer.Mode.EDIT,
+      button: void 0
+    },
+    '削除': {
+      value: Diceros.VectorLayer.Mode.DELETE,
+      button: void 0
     }
   };
 
@@ -349,28 +362,48 @@ Diceros.Application.prototype.createToolbar = function() {
 
     that.refreshToolbar();
   }
+  // separator
+  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
 
-  this.refreshToolbar();
+  // line optimization button
+  var optimizationMenu = new goog.ui.Menu();
+  for (i = 0; i <= 10; ++i) {
+    optimizationMenu.addChild(new goog.ui.Option(""+i), true);
+  }
+  var selector = new goog.ui.ToolbarSelect('線の補正', optimizationMenu);
+  selector.setTooltip('線の補正');
+  toolbar.addChild(selector, true);
+  toolbar.lineOptimization = selector;
+
+  goog.dom.classes.add(selector.getElement(), 'goog-toolbar-select');
 
   // rendering
+  this.refreshToolbar();
   toolbar.render(this.target);
 };
 
 Diceros.Application.prototype.refreshToolbar = function() {
+  /** @type {goog.ui.Toolbar} */
   var toolbar = this.toolbar;
+  /** @type {Array.<string>} */
   var keys = Object.keys(toolbar.modeButtons);
+  /** @type {string} */
   var key;
+  /** @type {number} */
   var i;
+  /** @type {number} */
   var il;
+  /** @type {goog.ui.ToolbarToggleButton} */
   var button;
-  var currentLayer;
-  var isVector;
+  /** @type {Diceros.Layer} */
+  var currentLayer = this.getCurrentCanvasWindow().getCurrentLayer();
+  /** @type {boolean} */
+  var isVector = currentLayer instanceof Diceros.VectorLayer;
 
+  // mode buttons
   for (i = 0, il = keys.length; i < il; ++i) {
     key = keys[i];
     button = toolbar.modeButtons[key].button;
-    currentLayer = this.getCurrentCanvasWindow().getCurrentLayer();
-    isVector = currentLayer instanceof Diceros.VectorLayer;
 
     if (isVector) {
       button.setEnabled(true);
@@ -381,6 +414,14 @@ Diceros.Application.prototype.refreshToolbar = function() {
       button.setEnabled(false);
     }
   }
+
+  // line optimization button
+  /*
+  toolbar.optimizeButton.setEnabled(isVector);
+
+  // point optimization button
+  toolbar.pointOptimize.setEnabled(isVector);
+  */
 };
 
 // end of scope

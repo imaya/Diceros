@@ -64,7 +64,7 @@ Diceros.BezierAGG.prototype.addControlPoint = function(point) {
  * 制御点の削除
  * @param {number} index 削除する制御点の index.
  */
-Diceros.BezierAGG.prototype.removeConrtrolPoint = function(index) {
+Diceros.BezierAGG.prototype.removeControlPoint = function(index) {
   var ctrlPoints = this.ctrlPoints;
   var curveCtrlPoints = this.curveCtrlPoints;
   var subCtrlPoints = this.subCtrlPoints;
@@ -243,6 +243,60 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
   // 描画
   ctx.beginPath();
 
+  // 点と直線はそのまま描画する
+  if (data.length === 1) {
+    point = data[0];
+
+    ctx.moveTo(point.x + point.width, point.y);
+    ctx.arc(point.x, point.y, point.width, 0, 7, false);
+    ctx.fill();
+
+    ctx.x = point.x - point.width;
+    ctx.y = point.y - point.width;
+    ctx.width = ctx.height = point.width * 2;
+
+    return ctx;
+  } else if (data.length === 2) {
+    point = data[0];
+    next = data[1];
+
+    radius = Math.atan2(next.y - point.y, next.x - point.x);
+    while (radius < Math.PI / 2) {
+      radius += Math.PI * 2;
+    }
+    ctx.moveTo(
+      point.x + point.width * Math.cos(radius - Math.PI / 2),
+      point.y + point.width * Math.sin(radius - Math.PI / 2)
+    );
+    ctx.arc(point.x, point.y, point.width, radius - Math.PI / 2, radius + Math.PI / 2, true);
+    ctx.lineTo(
+      next.x + next.width * Math.cos(radius + Math.PI / 2),
+      next.y + next.width * Math.sin(radius + Math.PI / 2)
+    );
+    ctx.arc(next.x, next.y, next.width, radius + Math.PI / 2, radius - Math.PI / 2, true);
+    ctx.lineTo(
+      point.x + point.width * Math.cos(radius - Math.PI / 2),
+      point.y + point.width * Math.sin(radius - Math.PI / 2)
+    );
+
+    ctx.fill();
+
+    minX = point.x - point.width;
+    (x = next.x - next.width) < minX && (minX = x);
+    maxX = point.x + point.width;
+    (x = next.x + next.width) > maxX && (maxX = x);
+    minY = point.y - point.width;
+    (y = next.y - next.width) < minY && (minY = y);
+    maxY = point.x + point.width;
+    (y = next.y + next.width) > maxY && (maxY = y);
+    ctx.x = minX;
+    ctx.y = minY;
+    ctx.width = maxX - minX;
+    ctx.height = maxY - minY;
+
+    return ctx;
+  }
+
   /*
   // 始点、終点の描画
   for (var i = 0, l = data.length; i < l; i++) {
@@ -342,7 +396,6 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
     }
   }
 
-  ctx.fillStyle = 'rgb(0,0,0)'; // XXX
   ctx.fill();
 
   ctx.x = minX;
@@ -647,20 +700,28 @@ function(s, c1, c2, e, depth, opt_l1, opt_l2) {
   };
 };
 
-Diceros.BezierAGG.prototype.optimize = function() {
+/**
+ * @param {number} param optimize parameter.
+ */
+Diceros.BezierAGG.prototype.optimize = function(param) {
   var ctrlPoints = this.ctrlPoints;
   var curvePoints = this.curveCtrlPoints;
   var i;
   var optimizeValue;
   var prev = ctrlPoints.length;
 
+  if (param === 0) {
+    return;
+  }
+
   for (i = 0; i < ctrlPoints.length - 2;) {
     optimizeValue = this.checkRemoval(
+      param,
       ctrlPoints[i], ctrlPoints[i+1], ctrlPoints[i+2],
       curvePoints[i][0], curvePoints[i][1],
       curvePoints[i+1][0], curvePoints[i+1][1]
     );
-    if (optimizeValue.distance < 3) {
+    if (optimizeValue.removal) {
       ctrlPoints.splice(i + 1, 1);
       curvePoints.splice(i + 1, 1);
       curvePoints[i][0] = optimizeValue.newCtrlPoint1;
@@ -676,6 +737,7 @@ Diceros.BezierAGG.prototype.optimize = function() {
 };
 
 /**
+ * @param {number} dist 補正パラメータ.
  * @param {Diceros.Point} p0 ベジェ曲線上の点1.
  * @param {Diceros.Point} p1 ベジェ曲線上の点2.
  * @param {Diceros.Point} p2 ベジェ曲線上の点3.
@@ -683,29 +745,35 @@ Diceros.BezierAGG.prototype.optimize = function() {
  * curveCtrlPoints... 制御点
  * ctrlPoints... ベジェ曲線上の点
  */
-Diceros.BezierAGG.prototype.checkRemoval = function(p0, p1, p2, cp00, cp01, cp10, cp11) {
+Diceros.BezierAGG.prototype.checkRemoval = function(dist, p0, p1, p2, cp00, cp01, cp10, cp11) {
   var edge0 = this.pythagorean_(p1, cp01);
-  var edge1 = this.pythagorean_(p1, cp11);
-  var ratio0 = edge1 / edge0;
-  var ratio1 = edge0 / edge1;
-  var cross = this.calcCrossPoint(cp00, cp01, cp10, cp11);
+  var edge1 = this.pythagorean_(p1, cp10);
+  var t = edge0 === 0 ? 0 : edge0 / (edge0 + edge1);
+  if (t === 0 || t === 1) {
+    return {removal: false};
+  }
   var cp02 = {
-    x: cp01.x + (cp01.x - p0.x) * ratio0,
-    y: cp01.y + (cp01.y - p0.y) * ratio0
+    x: p0.x + (cp00.x - p0.x) / t ,
+    y: p0.y + (cp00.y - p0.y) / t
   };
   var cp12 = {
-    x: cp11.x + (cp11.x - p2.x) * ratio1,
-    y: cp11.y + (cp11.y - p2.y) * ratio1
+    x: p2.x + (cp11.x - p2.x) / (1 / t),
+    y: p2.y + (cp11.y - p2.y) / (1 / t)
   };
-  var cp = {
-    x: cp02.x + (cp12.x - cp02.x) * (edge0 + edge1) / edge0,
-    y: cp02.y + (cp12.y - cp02.y) * (edge0 + edge1) / edge0
-  };
+  var p3 = this.getBezierPoint_(cp02, cp12, t);
+  var p4 = this.getBezierPoint_(cp00, p3, t);
+  var p5 = this.getBezierPoint_(p3, cp11, t);
+  var p6 = this.getBezierPoint_(p4, p5, t);
+  var removal;
 
   // TODO: width も t:1-s に収まっているか調べる
+  removal =
+    this.pythagorean_(p6, p1) < dist &&
+    this.pythagorean_(p4, cp01) < dist &&
+    this.pythagorean_(p5, cp10) < dist;
 
   return {
-    distance: this.pythagorean_(cp, cross),
+    removal: removal,
     newCtrlPoint1: cp02,
     newCtrlPoint2: cp12
   };

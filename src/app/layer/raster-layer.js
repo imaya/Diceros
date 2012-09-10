@@ -116,11 +116,18 @@ Diceros.RasterLayer.prototype.drawNewLine = function() {
   var outline = this.outline;
   /** @type {Diceros.LinePath} */
   var path;
+  /** @type {Diceros.Line} */
+  var line = this.currentLine;
 
   if (outline) {
     ctx.clearRect(outline.x, outline.y, outline.width, outline.height);
-    path = this.currentLine.path();
 
+    // optimization
+    if (typeof line.optimize === 'function') {
+      line.optimize(this.app.toolbar.lineOptimization.getValue() | 0);
+    }
+
+    path = line.path();
     if (path) {
       path.draw(this.ctx);
     }
