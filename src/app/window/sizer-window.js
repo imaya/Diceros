@@ -25,7 +25,7 @@ Diceros.SizerWindow = function(app, index, opt_domHelper) {
   this.name = 'SizerWindow';
   /** @type {!Element} */
   this.element;
-  /** @type {!Element} */
+  /** @type {HTMLCanvasElement} */
   this.canvas;
   /** @type {number} */
   this.width = 0;

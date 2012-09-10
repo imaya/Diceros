@@ -21,6 +21,9 @@ Diceros.Line = function(opt_color) {
    */
   this.ctrlPoints = [];
 
+  /** @type {string} */
+  opt_color;
+
   /**
    * @type {string}
    */

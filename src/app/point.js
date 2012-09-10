@@ -44,6 +44,7 @@ Diceros.Point = function(x, y, opt_width, opt_noPressure) {
 /**
  * @param {goog.events.BrowserEvent} ev browser event.
  * @param {number=} opt_baseWidth base point width.
+ * @param {boolean=} opt_noPressure if true, no use pressure.
  * @return {Diceros.Point} new point object.
  */
 Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
@@ -53,8 +54,8 @@ Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
   var x;
   /** @type {number} */
   var y;
-  /** @type {number} */
-  var width;
+  /** @type {Element} */
+  ev.target;
   /** @type {goog.math.Coordinate} */
   var offset = goog.style.getPageOffset(ev.target);
 
@@ -83,7 +84,7 @@ Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
  * @return {number} 筆圧(0.0-1.0).
  */
 Diceros.Point.prototype.getPressure = function(opt_event) {
-  /** @type {HTMLElement} */
+  /** @type {Element} */
   var plugin = this.getWacomPlugin();
   /** @type {Event} */
   var browserEvent;
@@ -121,7 +122,7 @@ Diceros.Point.prototype.getPressure = function(opt_event) {
 
 /**
  * ペンタブレットのプラグイン
- * @return {Object} wacom plugin.
+ * @return {Element} wacom plugin.
  */
 Diceros.Point.prototype.getWacomPlugin = function() {
   return document.querySelector('object[type="application/x-wacomtabletplugin"]');

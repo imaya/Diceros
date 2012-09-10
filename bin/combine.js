@@ -12472,11 +12472,11 @@ goog.events.BrowserFeature = {
   HAS_W3C_EVENT_SUPPORT: !goog.userAgent.IE || goog.userAgent.isDocumentMode(9),
 
   /**
-   * To prevent default in IE7 for certain keydown events we need set the
+   * To prevent default in IE7-8 for certain keydown events we need set the
    * keyCode to -1.
    */
   SET_KEY_CODE_TO_PREVENT_DEFAULT: goog.userAgent.IE &&
-      !goog.userAgent.isVersion('8'),
+      !goog.userAgent.isVersion('9'),
 
   /**
    * Whether the {@code navigator.onLine} property is supported.
@@ -12934,7 +12934,7 @@ goog.require('goog.disposable.IDisposable');
  * @implements {goog.disposable.IDisposable}
  */
 goog.Disposable = function() {
-  if (goog.Disposable.ENABLE_MONITORING) {
+  if (goog.Disposable.MONITORING_MODE != goog.Disposable.MonitoringMode.OFF) {
     this.creationStack = new Error().stack;
     goog.Disposable.instances_[goog.getUid(this)] = this;
   }
@@ -12942,14 +12942,37 @@ goog.Disposable = function() {
 
 
 /**
- * @define {boolean} Whether to enable the monitoring of the goog.Disposable
- *     instances. Switching on the monitoring is only recommended for debugging
- *     because it has a significant impact on performance and memory usage.
- *     If switched off, the monitoring code compiles down to 0 bytes.
- *     The monitoring expects that all disposable objects call the
- *     {@code goog.Disposable} base constructor.
+ * @enum {number} Different monitoring modes for Disposable.
  */
-goog.Disposable.ENABLE_MONITORING = false;
+goog.Disposable.MonitoringMode = {
+  /**
+   * No monitoring.
+   */
+  OFF: 0,
+  /**
+   * Creating and disposing the goog.Disposable instances is monitored. All
+   * disposable objects need to call the {@code goog.Disposable} base
+   * constructor. The PERMANENT mode must bet switched on before creating any
+   * goog.Disposable instances.
+   */
+  PERMANENT: 1,
+  /**
+   * INTERACTIVE mode can be switched on and off on the fly without producing
+   * errors. It also doesn't warn if the disposable objects don't call the
+   * {@code goog.Disposable} base constructor.
+   */
+  INTERACTIVE: 2
+};
+
+
+/**
+ * @define {number} The monitoring mode of the goog.Disposable
+ *     instances. Default is OFF. Switching on the monitoring is only
+ *     recommended for debugging because it has a significant impact on
+ *     performance and memory usage. If switched off, the monitoring code
+ *     compiles down to 0 bytes.
+ */
+goog.Disposable.MONITORING_MODE = 0;
 
 
 /**
@@ -13047,9 +13070,11 @@ goog.Disposable.prototype.dispose = function() {
     // gets disposed recursively.
     this.disposed_ = true;
     this.disposeInternal();
-    if (goog.Disposable.ENABLE_MONITORING) {
+    if (goog.Disposable.MONITORING_MODE != goog.Disposable.MonitoringMode.OFF) {
       var uid = goog.getUid(this);
-      if (!goog.Disposable.instances_.hasOwnProperty(uid)) {
+      if (goog.Disposable.MONITORING_MODE ==
+          goog.Disposable.MonitoringMode.PERMANENT &&
+          !goog.Disposable.instances_.hasOwnProperty(uid)) {
         throw Error(this + ' did not call the goog.Disposable base ' +
             'constructor or was disposed of after a clearUndisposedObjects ' +
             'call');
@@ -13105,9 +13130,11 @@ goog.Disposable.prototype.addOnDisposeCallback = function(callback, opt_scope) {
  *   goog.inherits(mypackage.MyClass, goog.Disposable);
  *
  *   mypackage.MyClass.prototype.disposeInternal = function() {
- *     goog.base(this, 'disposeInternal');
  *     // Dispose logic specific to MyClass.
  *     ...
+ *     // Call superclass's disposeInternal at the end of the subclass's, like
+ *     // in C++, to avoid hard-to-catch issues.
+ *     goog.base(this, 'disposeInternal');
  *   };
  * </pre>
  * @protected
@@ -21842,6 +21869,665 @@ Diceros.util.scrollBarWidth = function() {
 };
 
 /* vim:set expandtab ts=2 sw=2 tw=80: */
+// Copyright 2008 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview Renderer for {@link goog.ui.MenuItem}s.
+ *
+ * @author attila@google.com (Attila Bodis)
+ */
+
+goog.provide('goog.ui.MenuItemRenderer');
+
+goog.require('goog.dom');
+goog.require('goog.dom.a11y');
+goog.require('goog.dom.a11y.Role');
+goog.require('goog.dom.classes');
+goog.require('goog.ui.Component.State');
+goog.require('goog.ui.ControlContent');
+goog.require('goog.ui.ControlRenderer');
+
+
+
+/**
+ * Default renderer for {@link goog.ui.MenuItem}s.  Each item has the following
+ * structure:
+ * <pre>
+ *   <div class="goog-menuitem">
+ *     <div class="goog-menuitem-content">
+ *       ...(menu item contents)...
+ *     </div>
+ *   </div>
+ * </pre>
+ * @constructor
+ * @extends {goog.ui.ControlRenderer}
+ */
+goog.ui.MenuItemRenderer = function() {
+  goog.ui.ControlRenderer.call(this);
+
+  /**
+   * Commonly used CSS class names, cached here for convenience (and to avoid
+   * unnecessary string concatenation).
+   * @type {!Array.<string>}
+   * @private
+   */
+  this.classNameCache_ = [];
+};
+goog.inherits(goog.ui.MenuItemRenderer, goog.ui.ControlRenderer);
+goog.addSingletonGetter(goog.ui.MenuItemRenderer);
+
+
+/**
+ * CSS class name the renderer applies to menu item elements.
+ * @type {string}
+ */
+goog.ui.MenuItemRenderer.CSS_CLASS = goog.getCssName('goog-menuitem');
+
+
+/**
+ * Constants for referencing composite CSS classes.
+ * @enum {number}
+ * @private
+ */
+goog.ui.MenuItemRenderer.CompositeCssClassIndex_ = {
+  HOVER: 0,
+  CHECKBOX: 1,
+  CONTENT: 2
+};
+
+
+/**
+ * Returns the composite CSS class by using the cached value or by constructing
+ * the value from the base CSS class and the passed index.
+ * @param {goog.ui.MenuItemRenderer.CompositeCssClassIndex_} index Index for the
+ *     CSS class - could be highlight, checkbox or content in usual cases.
+ * @return {string} The composite CSS class.
+ * @private
+ */
+goog.ui.MenuItemRenderer.prototype.getCompositeCssClass_ = function(index) {
+  var result = this.classNameCache_[index];
+  if (!result) {
+    switch (index) {
+      case goog.ui.MenuItemRenderer.CompositeCssClassIndex_.HOVER:
+        result = goog.getCssName(this.getStructuralCssClass(), 'highlight');
+        break;
+      case goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CHECKBOX:
+        result = goog.getCssName(this.getStructuralCssClass(), 'checkbox');
+        break;
+      case goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CONTENT:
+        result = goog.getCssName(this.getStructuralCssClass(), 'content');
+        break;
+    }
+    this.classNameCache_[index] = result;
+  }
+
+  return result;
+};
+
+
+/** @override */
+goog.ui.MenuItemRenderer.prototype.getAriaRole = function() {
+  return goog.dom.a11y.Role.MENU_ITEM;
+};
+
+
+/**
+ * Overrides {@link goog.ui.ControlRenderer#createDom} by adding extra markup
+ * and stying to the menu item's element if it is selectable or checkable.
+ * @param {goog.ui.Control} item Menu item to render.
+ * @return {Element} Root element for the item.
+ * @override
+ */
+goog.ui.MenuItemRenderer.prototype.createDom = function(item) {
+  var element = item.getDomHelper().createDom(
+      'div', this.getClassNames(item).join(' '),
+      this.createContent(item.getContent(), item.getDomHelper()));
+  this.setEnableCheckBoxStructure(item, element,
+      item.isSupportedState(goog.ui.Component.State.SELECTED) ||
+      item.isSupportedState(goog.ui.Component.State.CHECKED));
+  return element;
+};
+
+
+/** @override */
+goog.ui.MenuItemRenderer.prototype.getContentElement = function(element) {
+  return /** @type {Element} */ (element && element.firstChild);
+};
+
+
+/**
+ * Overrides {@link goog.ui.ControlRenderer#decorate} by initializing the
+ * menu item to checkable based on whether the element to be decorated has
+ * extra stying indicating that it should be.
+ * @param {goog.ui.Control} item Menu item instance to decorate the element.
+ * @param {Element} element Element to decorate.
+ * @return {Element} Decorated element.
+ * @override
+ */
+goog.ui.MenuItemRenderer.prototype.decorate = function(item, element) {
+  if (!this.hasContentStructure(element)) {
+    element.appendChild(
+        this.createContent(element.childNodes, item.getDomHelper()));
+  }
+  if (goog.dom.classes.has(element, goog.getCssName('goog-option'))) {
+    item.setCheckable(true);
+    this.setCheckable(item, element, true);
+  }
+  return goog.ui.MenuItemRenderer.superClass_.decorate.call(this, item,
+      element);
+};
+
+
+/**
+ * Takes a menu item's root element, and sets its content to the given text
+ * caption or DOM structure.  Overrides the superclass immplementation by
+ * making sure that the checkbox structure (for selectable/checkable menu
+ * items) is preserved.
+ * @param {Element} element The item's root element.
+ * @param {goog.ui.ControlContent} content Text caption or DOM structure to be
+ *     set as the item's content.
+ * @override
+ */
+goog.ui.MenuItemRenderer.prototype.setContent = function(element, content) {
+  // Save the checkbox element, if present.
+  var contentElement = this.getContentElement(element);
+  var checkBoxElement = this.hasCheckBoxStructure(element) ?
+      contentElement.firstChild : null;
+  goog.ui.MenuItemRenderer.superClass_.setContent.call(this, element, content);
+  if (checkBoxElement && !this.hasCheckBoxStructure(element)) {
+    // The call to setContent() blew away the checkbox element; reattach it.
+    contentElement.insertBefore(checkBoxElement,
+        contentElement.firstChild || null);
+  }
+};
+
+
+/**
+ * Returns true if the element appears to have a proper menu item structure by
+ * checking whether its first child has the appropriate structural class name.
+ * @param {Element} element Element to check.
+ * @return {boolean} Whether the element appears to have a proper menu item DOM.
+ * @protected
+ */
+goog.ui.MenuItemRenderer.prototype.hasContentStructure = function(element) {
+  var child = goog.dom.getFirstElementChild(element);
+  var contentClassName = this.getCompositeCssClass_(
+      goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CONTENT);
+  return !!child && goog.dom.classes.has(child, contentClassName);
+};
+
+
+/**
+ * Wraps the given text caption or existing DOM node(s) in a structural element
+ * containing the menu item's contents.
+ * @param {goog.ui.ControlContent} content Menu item contents.
+ * @param {goog.dom.DomHelper} dom DOM helper for document interaction.
+ * @return {Element} Menu item content element.
+ * @protected
+ */
+goog.ui.MenuItemRenderer.prototype.createContent = function(content, dom) {
+  var contentClassName = this.getCompositeCssClass_(
+      goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CONTENT);
+  return dom.createDom('div', contentClassName, content);
+};
+
+
+/**
+ * Enables/disables radio button semantics on the menu item.
+ * @param {goog.ui.Control} item Menu item to update.
+ * @param {Element} element Menu item element to update (may be null if the
+ *     item hasn't been rendered yet).
+ * @param {boolean} selectable Whether the item should be selectable.
+ */
+goog.ui.MenuItemRenderer.prototype.setSelectable = function(item, element,
+    selectable) {
+  if (element) {
+    goog.dom.a11y.setRole(element, selectable ?
+        goog.dom.a11y.Role.MENU_ITEM_RADIO :
+        /** @type {string} */ (this.getAriaRole()));
+    this.setEnableCheckBoxStructure(item, element, selectable);
+  }
+};
+
+
+/**
+ * Enables/disables checkbox semantics on the menu item.
+ * @param {goog.ui.Control} item Menu item to update.
+ * @param {Element} element Menu item element to update (may be null if the
+ *     item hasn't been rendered yet).
+ * @param {boolean} checkable Whether the item should be checkable.
+ */
+goog.ui.MenuItemRenderer.prototype.setCheckable = function(item, element,
+    checkable) {
+  if (element) {
+    goog.dom.a11y.setRole(element, checkable ?
+        goog.dom.a11y.Role.MENU_ITEM_CHECKBOX :
+        /** @type {string} */ (this.getAriaRole()));
+    this.setEnableCheckBoxStructure(item, element, checkable);
+  }
+};
+
+
+/**
+ * Determines whether the item contains a checkbox element.
+ * @param {Element} element Menu item root element.
+ * @return {boolean} Whether the element contains a checkbox element.
+ * @protected
+ */
+goog.ui.MenuItemRenderer.prototype.hasCheckBoxStructure = function(element) {
+  var contentElement = this.getContentElement(element);
+  if (contentElement) {
+    var child = contentElement.firstChild;
+    var checkboxClassName = this.getCompositeCssClass_(
+        goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CHECKBOX);
+    return !!child && goog.dom.classes.has(child, checkboxClassName);
+  }
+  return false;
+};
+
+
+/**
+ * Adds or removes extra markup and CSS styling to the menu item to make it
+ * selectable or non-selectable, depending on the value of the
+ * {@code selectable} argument.
+ * @param {goog.ui.Control} item Menu item to update.
+ * @param {Element} element Menu item element to update.
+ * @param {boolean} enable Whether to add or remove the checkbox structure.
+ * @protected
+ */
+goog.ui.MenuItemRenderer.prototype.setEnableCheckBoxStructure = function(item,
+    element, enable) {
+  if (enable != this.hasCheckBoxStructure(element)) {
+    goog.dom.classes.enable(element, goog.getCssName('goog-option'), enable);
+    var contentElement = this.getContentElement(element);
+    if (enable) {
+      // Insert checkbox structure.
+      var checkboxClassName = this.getCompositeCssClass_(
+          goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CHECKBOX);
+      contentElement.insertBefore(
+          item.getDomHelper().createDom('div', checkboxClassName),
+          contentElement.firstChild || null);
+    } else {
+      // Remove checkbox structure.
+      contentElement.removeChild(contentElement.firstChild);
+    }
+  }
+};
+
+
+/**
+ * Takes a single {@link goog.ui.Component.State}, and returns the
+ * corresponding CSS class name (null if none).  Overrides the superclass
+ * implementation by using 'highlight' as opposed to 'hover' as the CSS
+ * class name suffix for the HOVER state, for backwards compatibility.
+ * @param {goog.ui.Component.State} state Component state.
+ * @return {string|undefined} CSS class representing the given state
+ *     (undefined if none).
+ * @override
+ */
+goog.ui.MenuItemRenderer.prototype.getClassForState = function(state) {
+  switch (state) {
+    case goog.ui.Component.State.HOVER:
+      // We use 'highlight' as the suffix, for backwards compatibility.
+      return this.getCompositeCssClass_(
+          goog.ui.MenuItemRenderer.CompositeCssClassIndex_.HOVER);
+    case goog.ui.Component.State.CHECKED:
+    case goog.ui.Component.State.SELECTED:
+    // We use 'goog-option-selected' as the class, for backwards compatibility.
+      return goog.getCssName('goog-option-selected');
+    default:
+      return goog.ui.MenuItemRenderer.superClass_.getClassForState.call(this,
+          state);
+  }
+};
+
+
+/**
+ * Takes a single CSS class name which may represent a component state, and
+ * returns the corresponding component state (0x00 if none).  Overrides the
+ * superclass implementation by treating 'goog-option-selected' as special,
+ * for backwards compatibility.
+ * @param {string} className CSS class name, possibly representing a component
+ *     state.
+ * @return {goog.ui.Component.State} state Component state corresponding
+ *     to the given CSS class (0x00 if none).
+ * @override
+ */
+goog.ui.MenuItemRenderer.prototype.getStateFromClass = function(className) {
+  var hoverClassName = this.getCompositeCssClass_(
+      goog.ui.MenuItemRenderer.CompositeCssClassIndex_.HOVER);
+  switch (className) {
+    case goog.getCssName('goog-option-selected'):
+      return goog.ui.Component.State.CHECKED;
+    case hoverClassName:
+      return goog.ui.Component.State.HOVER;
+    default:
+      return goog.ui.MenuItemRenderer.superClass_.getStateFromClass.call(this,
+          className);
+  }
+};
+
+
+/** @override */
+goog.ui.MenuItemRenderer.prototype.getCssClass = function() {
+  return goog.ui.MenuItemRenderer.CSS_CLASS;
+};
+// Copyright 2007 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview A class for representing items in menus.
+ * @see goog.ui.Menu
+ *
+ * @see ../demos/menuitem.html
+ */
+
+goog.provide('goog.ui.MenuItem');
+
+goog.require('goog.array');
+goog.require('goog.dom');
+goog.require('goog.dom.classes');
+goog.require('goog.events.KeyCodes');
+goog.require('goog.math.Coordinate');
+goog.require('goog.string');
+goog.require('goog.ui.Component.State');
+goog.require('goog.ui.Control');
+goog.require('goog.ui.ControlContent');
+goog.require('goog.ui.MenuItemRenderer');
+goog.require('goog.ui.registry');
+
+
+
+/**
+ * Class representing an item in a menu.
+ *
+ * @param {goog.ui.ControlContent} content Text caption or DOM structure to
+ *     display as the content of the item (use to add icons or styling to
+ *     menus).
+ * @param {*=} opt_model Data/model associated with the menu item.
+ * @param {goog.dom.DomHelper=} opt_domHelper Optional DOM helper used for
+ *     document interactions.
+ * @param {goog.ui.MenuItemRenderer=} opt_renderer Optional renderer.
+ * @constructor
+ * @extends {goog.ui.Control}
+ */
+goog.ui.MenuItem = function(content, opt_model, opt_domHelper, opt_renderer) {
+  goog.ui.Control.call(this, content, opt_renderer ||
+      goog.ui.MenuItemRenderer.getInstance(), opt_domHelper);
+  this.setValue(opt_model);
+};
+goog.inherits(goog.ui.MenuItem, goog.ui.Control);
+
+
+/**
+ * The access key for this menu item. This key allows the user to quickly
+ * trigger this item's action with they keyboard. For example, setting the
+ * mnenomic key to 70 (F), when the user opens the menu and hits "F," the
+ * menu item is triggered.
+ *
+ * @type {goog.events.KeyCodes}
+ * @private
+ */
+goog.ui.MenuItem.mnemonicKey_;
+
+
+/**
+ * The class set on an element that contains a parenthetical mnemonic key hint.
+ * Parenthetical hints are added to items in which the mnemonic key is not found
+ * within the menu item's caption itself. For example, if you have a menu item
+ * with the caption "Record," but its mnemonic key is "I", the caption displayed
+ * in the menu will appear as "Record (I)".
+ *
+ * @type {string}
+ * @private
+ */
+goog.ui.MenuItem.MNEMONIC_WRAPPER_CLASS_ =
+    goog.getCssName('goog-menuitem-mnemonic-separator');
+
+
+/**
+ * The class set on an element that contains a keyboard accelerator hint.
+ * @type {string}
+ * @private
+ */
+goog.ui.MenuItem.ACCELERATOR_CLASS_ = goog.getCssName('goog-menuitem-accel');
+
+
+// goog.ui.Component and goog.ui.Control implementation.
+
+
+/**
+ * Returns the value associated with the menu item.  The default implementation
+ * returns the model object associated with the item (if any), or its caption.
+ * @return {*} Value associated with the menu item, if any, or its caption.
+ */
+goog.ui.MenuItem.prototype.getValue = function() {
+  var model = this.getModel();
+  return model != null ? model : this.getCaption();
+};
+
+
+/**
+ * Sets the value associated with the menu item.  The default implementation
+ * stores the value as the model of the menu item.
+ * @param {*} value Value to be associated with the menu item.
+ */
+goog.ui.MenuItem.prototype.setValue = function(value) {
+  this.setModel(value);
+};
+
+
+/**
+ * Sets the menu item to be selectable or not.  Set to true for menu items
+ * that represent selectable options.
+ * @param {boolean} selectable Whether the menu item is selectable.
+ */
+goog.ui.MenuItem.prototype.setSelectable = function(selectable) {
+  this.setSupportedState(goog.ui.Component.State.SELECTED, selectable);
+  if (this.isChecked() && !selectable) {
+    this.setChecked(false);
+  }
+
+  var element = this.getElement();
+  if (element) {
+    this.getRenderer().setSelectable(this, element, selectable);
+  }
+};
+
+
+/**
+ * Sets the menu item to be checkable or not.  Set to true for menu items
+ * that represent checkable options.
+ * @param {boolean} checkable Whether the menu item is checkable.
+ */
+goog.ui.MenuItem.prototype.setCheckable = function(checkable) {
+  this.setSupportedState(goog.ui.Component.State.CHECKED, checkable);
+
+  var element = this.getElement();
+  if (element) {
+    this.getRenderer().setCheckable(this, element, checkable);
+  }
+};
+
+
+/**
+ * Returns the text caption of the component while ignoring accelerators.
+ * @override
+ */
+goog.ui.MenuItem.prototype.getCaption = function() {
+  var content = this.getContent();
+  if (goog.isArray(content)) {
+    var acceleratorClass = goog.ui.MenuItem.ACCELERATOR_CLASS_;
+    var mnemonicWrapClass = goog.ui.MenuItem.MNEMONIC_WRAPPER_CLASS_;
+    var caption = goog.array.map(content, function(node) {
+      var classes = goog.dom.classes.get(node);
+      if (goog.array.contains(classes, acceleratorClass) ||
+          goog.array.contains(classes, mnemonicWrapClass)) {
+        return '';
+      } else {
+        return goog.dom.getRawTextContent(node);
+      }
+    }).join('');
+    return goog.string.collapseBreakingSpaces(caption);
+  }
+  return goog.ui.MenuItem.superClass_.getCaption.call(this);
+};
+
+
+/** @override */
+goog.ui.MenuItem.prototype.handleMouseUp = function(e) {
+  var parentMenu = /** @type {goog.ui.Menu} */ (this.getParent());
+
+  if (parentMenu) {
+    var oldCoords = parentMenu.openingCoords;
+    // Clear out the saved opening coords immediately so they're not used twice.
+    parentMenu.openingCoords = null;
+
+    if (oldCoords && goog.isNumber(e.clientX)) {
+      var newCoords = new goog.math.Coordinate(e.clientX, e.clientY);
+      if (goog.math.Coordinate.equals(oldCoords, newCoords)) {
+        // This menu was opened by a mousedown and we're handling the consequent
+        // mouseup. The coords haven't changed, meaning this was a simple click,
+        // not a click and drag. Don't do the usual behavior because the menu
+        // just popped up under the mouse and the user didn't mean to activate
+        // this item.
+        return;
+      }
+    }
+  }
+
+  goog.base(this, 'handleMouseUp', e);
+};
+
+
+/** @override */
+goog.ui.MenuItem.prototype.handleKeyEventInternal = function(e) {
+  if (e.keyCode == this.getMnemonic() && this.performActionInternal(e)) {
+    return true;
+  } else {
+    return goog.base(this, 'handleKeyEventInternal', e);
+  }
+};
+
+
+/**
+ * Sets the mnemonic key code. The mnemonic is the key associated with this
+ * action.
+ * @param {goog.events.KeyCodes} key The key code.
+ */
+goog.ui.MenuItem.prototype.setMnemonic = function(key) {
+  this.mnemonicKey_ = key;
+};
+
+
+/**
+ * Gets the mnemonic key code. The mnemonic is the key associated with this
+ * action.
+ * @return {goog.events.KeyCodes} The key code of the mnemonic key.
+ */
+goog.ui.MenuItem.prototype.getMnemonic = function() {
+  return this.mnemonicKey_;
+};
+
+
+// Register a decorator factory function for goog.ui.MenuItems.
+goog.ui.registry.setDecoratorByClassName(goog.ui.MenuItemRenderer.CSS_CLASS,
+    function() {
+      // MenuItem defaults to using MenuItemRenderer.
+      return new goog.ui.MenuItem(null);
+    });
+// Copyright 2007 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview A menu item class that supports selection state.
+ *
+ * @author attila@google.com (Attila Bodis)
+ */
+
+goog.provide('goog.ui.Option');
+
+goog.require('goog.ui.Component.EventType');
+goog.require('goog.ui.ControlContent');
+goog.require('goog.ui.MenuItem');
+goog.require('goog.ui.registry');
+
+
+
+/**
+ * Class representing a menu option.  This is just a convenience class that
+ * extends {@link goog.ui.MenuItem} by making it selectable.
+ *
+ * @param {goog.ui.ControlContent} content Text caption or DOM structure to
+ *     display as the content of the item (use to add icons or styling to
+ *     menus).
+ * @param {*=} opt_model Data/model associated with the menu item.
+ * @param {goog.dom.DomHelper=} opt_domHelper Optional DOM helper used for
+ *     document interactions.
+ * @constructor
+ * @extends {goog.ui.MenuItem}
+ */
+goog.ui.Option = function(content, opt_model, opt_domHelper) {
+  goog.ui.MenuItem.call(this, content, opt_model, opt_domHelper);
+  this.setSelectable(true);
+};
+goog.inherits(goog.ui.Option, goog.ui.MenuItem);
+
+
+/**
+ * Performs the appropriate action when the option is activated by the user.
+ * Overrides the superclass implementation by not changing the selection state
+ * of the option and not dispatching any SELECTED events, for backwards
+ * compatibility with existing uses of this class.
+ * @param {goog.events.Event} e Mouse or key event that triggered the action.
+ * @return {boolean} True if the action was allowed to proceed, false otherwise.
+ * @override
+ */
+goog.ui.Option.prototype.performActionInternal = function(e) {
+  return this.dispatchEvent(goog.ui.Component.EventType.ACTION);
+};
+
+
+// Register a decorator factory function for goog.ui.Options.
+goog.ui.registry.setDecoratorByClassName(
+    goog.getCssName('goog-option'), function() {
+  // Option defaults to using MenuItemRenderer.
+  return new goog.ui.Option(null);
+});
 // Copyright 2012 The Closure Library Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -22016,1676 +22702,6 @@ goog.style.bidi.setPosition = function(elem, left, top, isRtl) {
     elem.style.left = left + 'px';
     elem.style.right = '';
   }
-};
-// Copyright 2006 The Closure Library Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS-IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * @fileoverview Drag Utilities.
- *
- * Provides extensible functionality for drag & drop behaviour.
- *
- * @see ../demos/drag.html
- * @see ../demos/dragger.html
- */
-
-
-goog.provide('goog.fx.DragEvent');
-goog.provide('goog.fx.Dragger');
-goog.provide('goog.fx.Dragger.EventType');
-
-goog.require('goog.dom');
-goog.require('goog.events');
-goog.require('goog.events.BrowserEvent.MouseButton');
-goog.require('goog.events.Event');
-goog.require('goog.events.EventHandler');
-goog.require('goog.events.EventTarget');
-goog.require('goog.events.EventType');
-goog.require('goog.math.Coordinate');
-goog.require('goog.math.Rect');
-goog.require('goog.style');
-goog.require('goog.style.bidi');
-goog.require('goog.userAgent');
-
-
-
-/**
- * A class that allows mouse or touch-based dragging (moving) of an element
- *
- * @param {Element} target The element that will be dragged.
- * @param {Element=} opt_handle An optional handle to control the drag, if null
- *     the target is used.
- * @param {goog.math.Rect=} opt_limits Object containing left, top, width,
- *     and height.
- *
- * @extends {goog.events.EventTarget}
- * @constructor
- */
-goog.fx.Dragger = function(target, opt_handle, opt_limits) {
-  goog.events.EventTarget.call(this);
-  this.target = target;
-  this.handle = opt_handle || target;
-  this.limits = opt_limits || new goog.math.Rect(NaN, NaN, NaN, NaN);
-
-  this.document_ = goog.dom.getOwnerDocument(target);
-  this.eventHandler_ = new goog.events.EventHandler(this);
-
-  // Add listener. Do not use the event handler here since the event handler is
-  // used for listeners added and removed during the drag operation.
-  goog.events.listen(this.handle,
-      [goog.events.EventType.TOUCHSTART, goog.events.EventType.MOUSEDOWN],
-      this.startDrag, false, this);
-};
-goog.inherits(goog.fx.Dragger, goog.events.EventTarget);
-
-
-/**
- * Whether setCapture is supported by the browser.
- * @type {boolean}
- * @private
- */
-goog.fx.Dragger.HAS_SET_CAPTURE_ =
-    // IE and Gecko after 1.9.3 has setCapture
-    // WebKit does not yet: https://bugs.webkit.org/show_bug.cgi?id=27330
-    goog.userAgent.IE ||
-    goog.userAgent.GECKO && goog.userAgent.isVersion('1.9.3');
-
-
-/**
- * Constants for event names.
- * @enum {string}
- */
-goog.fx.Dragger.EventType = {
-  // The drag action was canceled before the START event. Possible reasons:
-  // disabled dragger, dragging with the right mouse button or releasing the
-  // button before reaching the hysteresis distance.
-  EARLY_CANCEL: 'earlycancel',
-  START: 'start',
-  BEFOREDRAG: 'beforedrag',
-  DRAG: 'drag',
-  END: 'end'
-};
-
-
-/**
- * Reference to drag target element.
- * @type {Element}
- */
-goog.fx.Dragger.prototype.target;
-
-
-/**
- * Reference to the handler that initiates the drag.
- * @type {Element}
- */
-goog.fx.Dragger.prototype.handle;
-
-
-/**
- * Object representing the limits of the drag region.
- * @type {goog.math.Rect}
- */
-goog.fx.Dragger.prototype.limits;
-
-
-/**
- * Whether the element is rendered right-to-left. We initialize this lazily.
- * @type {boolean|undefined}}
- * @private
- */
-goog.fx.Dragger.prototype.rightToLeft_;
-
-
-/**
- * Current x position of mouse or touch relative to viewport.
- * @type {number}
- */
-goog.fx.Dragger.prototype.clientX = 0;
-
-
-/**
- * Current y position of mouse or touch relative to viewport.
- * @type {number}
- */
-goog.fx.Dragger.prototype.clientY = 0;
-
-
-/**
- * Current x position of mouse or touch relative to screen. Deprecated because
- * it doesn't take into affect zoom level or pixel density.
- * @type {number}
- * @deprecated Consider switching to clientX instead.
- */
-goog.fx.Dragger.prototype.screenX = 0;
-
-
-/**
- * Current y position of mouse or touch relative to screen. Deprecated because
- * it doesn't take into affect zoom level or pixel density.
- * @type {number}
- * @deprecated Consider switching to clientY instead.
- */
-goog.fx.Dragger.prototype.screenY = 0;
-
-
-/**
- * The x position where the first mousedown or touchstart occurred.
- * @type {number}
- */
-goog.fx.Dragger.prototype.startX = 0;
-
-
-/**
- * The y position where the first mousedown or touchstart occurred.
- * @type {number}
- */
-goog.fx.Dragger.prototype.startY = 0;
-
-
-/**
- * Current x position of drag relative to target's parent.
- * @type {number}
- */
-goog.fx.Dragger.prototype.deltaX = 0;
-
-
-/**
- * Current y position of drag relative to target's parent.
- * @type {number}
- */
-goog.fx.Dragger.prototype.deltaY = 0;
-
-
-/**
- * The current page scroll value.
- * @type {goog.math.Coordinate}
- */
-goog.fx.Dragger.prototype.pageScroll;
-
-
-/**
- * Whether dragging is currently enabled.
- * @type {boolean}
- * @private
- */
-goog.fx.Dragger.prototype.enabled_ = true;
-
-
-/**
- * Whether object is currently being dragged.
- * @type {boolean}
- * @private
- */
-goog.fx.Dragger.prototype.dragging_ = false;
-
-
-/**
- * The amount of distance, in pixels, after which a mousedown or touchstart is
- * considered a drag.
- * @type {number}
- * @private
- */
-goog.fx.Dragger.prototype.hysteresisDistanceSquared_ = 0;
-
-
-/**
- * Timestamp of when the mousedown or touchstart occurred.
- * @type {number}
- * @private
- */
-goog.fx.Dragger.prototype.mouseDownTime_ = 0;
-
-
-/**
- * Reference to a document object to use for the events.
- * @type {Document}
- * @private
- */
-goog.fx.Dragger.prototype.document_;
-
-
-/**
- * Event handler used to simplify managing events.
- * @type {goog.events.EventHandler}
- * @private
- */
-goog.fx.Dragger.prototype.eventHandler_;
-
-
-/**
- * The SCROLL event target used to make drag element follow scrolling.
- * @type {EventTarget}
- * @private
- */
-goog.fx.Dragger.prototype.scrollTarget_;
-
-
-/**
- * Whether IE drag events cancelling is on.
- * @type {boolean}
- * @private
- */
-goog.fx.Dragger.prototype.ieDragStartCancellingOn_ = false;
-
-
-/**
- * Whether the dragger implements the changes described in http://b/6324964,
- * making it truly RTL.  This is a temporary flag to allow clients to transition
- * to the new behavior at their convenience.  At some point it will be the
- * default.
- * @type {boolean}
- * @private
- */
-goog.fx.Dragger.prototype.useRightPositioningForRtl_ = false;
-
-
-/**
- * Turns on/off true RTL behavior.  This should be called immediately after
- * construction.  This is a temporary flag to allow clients to transition
- * to the new component at their convenience.  At some point true will be the
- * default.
- * @param {boolean} useRightPositioningForRtl True if "right" should be used for
- *     positioning, false if "left" should be used for positioning.
- */
-goog.fx.Dragger.prototype.enableRightPositioningForRtl =
-    function(useRightPositioningForRtl) {
-  this.useRightPositioningForRtl_ = useRightPositioningForRtl;
-};
-
-
-/**
- * Returns the event handler, intended for subclass use.
- * @return {goog.events.EventHandler} The event handler.
- */
-goog.fx.Dragger.prototype.getHandler = function() {
-  return this.eventHandler_;
-};
-
-
-/**
- * Sets (or reset) the Drag limits after a Dragger is created.
- * @param {goog.math.Rect?} limits Object containing left, top, width,
- *     height for new Dragger limits. If target is right-to-left and
- *     enableRightPositioningForRtl(true) is called, then rect is interpreted as
- *     right, top, width, and height.
- */
-goog.fx.Dragger.prototype.setLimits = function(limits) {
-  this.limits = limits || new goog.math.Rect(NaN, NaN, NaN, NaN);
-};
-
-
-/**
- * Sets the distance the user has to drag the element before a drag operation is
- * started.
- * @param {number} distance The number of pixels after which a mousedown and
- *     move is considered a drag.
- */
-goog.fx.Dragger.prototype.setHysteresis = function(distance) {
-  this.hysteresisDistanceSquared_ = Math.pow(distance, 2);
-};
-
-
-/**
- * Gets the distance the user has to drag the element before a drag operation is
- * started.
- * @return {number} distance The number of pixels after which a mousedown and
- *     move is considered a drag.
- */
-goog.fx.Dragger.prototype.getHysteresis = function() {
-  return Math.sqrt(this.hysteresisDistanceSquared_);
-};
-
-
-/**
- * Sets the SCROLL event target to make drag element follow scrolling.
- *
- * @param {EventTarget} scrollTarget The event target that dispatches SCROLL
- *     events.
- */
-goog.fx.Dragger.prototype.setScrollTarget = function(scrollTarget) {
-  this.scrollTarget_ = scrollTarget;
-};
-
-
-/**
- * Enables cancelling of built-in IE drag events.
- * @param {boolean} cancelIeDragStart Whether to enable cancelling of IE
- *     dragstart event.
- */
-goog.fx.Dragger.prototype.setCancelIeDragStart = function(cancelIeDragStart) {
-  this.ieDragStartCancellingOn_ = cancelIeDragStart;
-};
-
-
-/**
- * @return {boolean} Whether the dragger is enabled.
- */
-goog.fx.Dragger.prototype.getEnabled = function() {
-  return this.enabled_;
-};
-
-
-/**
- * Set whether dragger is enabled
- * @param {boolean} enabled Whether dragger is enabled.
- */
-goog.fx.Dragger.prototype.setEnabled = function(enabled) {
-  this.enabled_ = enabled;
-};
-
-
-/** @override */
-goog.fx.Dragger.prototype.disposeInternal = function() {
-  goog.fx.Dragger.superClass_.disposeInternal.call(this);
-  goog.events.unlisten(this.handle,
-      [goog.events.EventType.TOUCHSTART, goog.events.EventType.MOUSEDOWN],
-      this.startDrag, false, this);
-  this.cleanUpAfterDragging_();
-
-  this.target = null;
-  this.handle = null;
-  this.eventHandler_ = null;
-};
-
-
-/**
- * Whether the DOM element being manipulated is rendered right-to-left.
- * @return {boolean} True if the DOM element is rendered right-to-left, false
- *     otherwise.
- * @private
- */
-goog.fx.Dragger.prototype.isRightToLeft_ = function() {
-  if (!goog.isDef(this.rightToLeft_)) {
-    this.rightToLeft_ = goog.style.isRightToLeft(this.target);
-  }
-  return this.rightToLeft_;
-};
-
-
-/**
- * Event handler that is used to start the drag
- * @param {goog.events.BrowserEvent} e Event object.
- */
-goog.fx.Dragger.prototype.startDrag = function(e) {
-  var isMouseDown = e.type == goog.events.EventType.MOUSEDOWN;
-
-  // Dragger.startDrag() can be called by AbstractDragDrop with a mousemove
-  // event and IE does not report pressed mouse buttons on mousemove. Also,
-  // it does not make sense to check for the button if the user is already
-  // dragging.
-
-  if (this.enabled_ && !this.dragging_ &&
-      (!isMouseDown || e.isMouseActionButton())) {
-    this.maybeReinitTouchEvent_(e);
-    if (this.hysteresisDistanceSquared_ == 0) {
-      if (this.fireDragStart_(e)) {
-        this.dragging_ = true;
-        e.preventDefault();
-      } else {
-        // If the start drag is cancelled, don't setup for a drag.
-        return;
-      }
-    } else {
-      // Need to preventDefault for hysteresis to prevent page getting selected.
-      e.preventDefault();
-    }
-    this.setupDragHandlers();
-
-    this.clientX = this.startX = e.clientX;
-    this.clientY = this.startY = e.clientY;
-    this.screenX = e.screenX;
-    this.screenY = e.screenY;
-    this.deltaX = this.useRightPositioningForRtl_ ?
-        goog.style.bidi.getOffsetStart(this.target) : this.target.offsetLeft;
-    this.deltaY = this.target.offsetTop;
-    this.pageScroll = goog.dom.getDomHelper(this.document_).getDocumentScroll();
-
-    this.mouseDownTime_ = goog.now();
-  } else {
-    this.dispatchEvent(goog.fx.Dragger.EventType.EARLY_CANCEL);
-  }
-};
-
-
-/**
- * Sets up event handlers when dragging starts.
- * @protected
- */
-goog.fx.Dragger.prototype.setupDragHandlers = function() {
-  var doc = this.document_;
-  var docEl = doc.documentElement;
-  // Use bubbling when we have setCapture since we got reports that IE has
-  // problems with the capturing events in combination with setCapture.
-  var useCapture = !goog.fx.Dragger.HAS_SET_CAPTURE_;
-
-  this.eventHandler_.listen(doc,
-      [goog.events.EventType.TOUCHMOVE, goog.events.EventType.MOUSEMOVE],
-      this.handleMove_, useCapture);
-  this.eventHandler_.listen(doc,
-      [goog.events.EventType.TOUCHEND, goog.events.EventType.MOUSEUP],
-      this.endDrag, useCapture);
-
-  if (goog.fx.Dragger.HAS_SET_CAPTURE_) {
-    docEl.setCapture(false);
-    this.eventHandler_.listen(docEl,
-                              goog.events.EventType.LOSECAPTURE,
-                              this.endDrag);
-  } else {
-    // Make sure we stop the dragging if the window loses focus.
-    // Don't use capture in this listener because we only want to end the drag
-    // if the actual window loses focus. Since blur events do not bubble we use
-    // a bubbling listener on the window.
-    this.eventHandler_.listen(goog.dom.getWindow(doc),
-                              goog.events.EventType.BLUR,
-                              this.endDrag);
-  }
-
-  if (goog.userAgent.IE && this.ieDragStartCancellingOn_) {
-    // Cancel IE's 'ondragstart' event.
-    this.eventHandler_.listen(doc, goog.events.EventType.DRAGSTART,
-                              goog.events.Event.preventDefault);
-  }
-
-  if (this.scrollTarget_) {
-    this.eventHandler_.listen(this.scrollTarget_, goog.events.EventType.SCROLL,
-                              this.onScroll_, useCapture);
-  }
-};
-
-
-/**
- * Fires a goog.fx.Dragger.EventType.START event.
- * @param {goog.events.BrowserEvent} e Browser event that triggered the drag.
- * @return {boolean} False iff preventDefault was called on the DragEvent.
- * @private
- */
-goog.fx.Dragger.prototype.fireDragStart_ = function(e) {
-  return this.dispatchEvent(new goog.fx.DragEvent(
-      goog.fx.Dragger.EventType.START, this, e.clientX, e.clientY, e));
-};
-
-
-/**
- * Unregisters the event handlers that are only active during dragging, and
- * releases mouse capture.
- * @private
- */
-goog.fx.Dragger.prototype.cleanUpAfterDragging_ = function() {
-  this.eventHandler_.removeAll();
-  if (goog.fx.Dragger.HAS_SET_CAPTURE_) {
-    this.document_.releaseCapture();
-  }
-};
-
-
-/**
- * Event handler that is used to end the drag.
- * @param {goog.events.BrowserEvent} e Event object.
- * @param {boolean=} opt_dragCanceled Whether the drag has been canceled.
- */
-goog.fx.Dragger.prototype.endDrag = function(e, opt_dragCanceled) {
-  this.cleanUpAfterDragging_();
-
-  if (this.dragging_) {
-    this.maybeReinitTouchEvent_(e);
-    this.dragging_ = false;
-
-    var x = this.limitX(this.deltaX);
-    var y = this.limitY(this.deltaY);
-    var dragCanceled = opt_dragCanceled ||
-        e.type == goog.events.EventType.TOUCHCANCEL;
-    this.dispatchEvent(new goog.fx.DragEvent(
-        goog.fx.Dragger.EventType.END, this, e.clientX, e.clientY, e, x, y,
-        dragCanceled));
-  } else {
-    this.dispatchEvent(goog.fx.Dragger.EventType.EARLY_CANCEL);
-  }
-
-  // Call preventDefault to prevent mouseup from being raised if this is a
-  // touchend event.
-  if (e.type == goog.events.EventType.TOUCHEND ||
-      e.type == goog.events.EventType.TOUCHCANCEL) {
-    e.preventDefault();
-  }
-};
-
-
-/**
- * Event handler that is used to end the drag by cancelling it.
- * @param {goog.events.BrowserEvent} e Event object.
- */
-goog.fx.Dragger.prototype.endDragCancel = function(e) {
-  this.endDrag(e, true);
-};
-
-
-/**
- * Re-initializes the event with the first target touch event or, in the case
- * of a stop event, the last changed touch.
- * @param {goog.events.BrowserEvent} e A TOUCH... event.
- * @private
- */
-goog.fx.Dragger.prototype.maybeReinitTouchEvent_ = function(e) {
-  var type = e.type;
-
-  if (type == goog.events.EventType.TOUCHSTART ||
-      type == goog.events.EventType.TOUCHMOVE) {
-    e.init(e.getBrowserEvent().targetTouches[0], e.currentTarget);
-  } else if (type == goog.events.EventType.TOUCHEND ||
-             type == goog.events.EventType.TOUCHCANCEL) {
-    e.init(e.getBrowserEvent().changedTouches[0], e.currentTarget);
-  }
-};
-
-
-/**
- * Event handler that is used on mouse / touch move to update the drag
- * @param {goog.events.BrowserEvent} e Event object.
- * @private
- */
-goog.fx.Dragger.prototype.handleMove_ = function(e) {
-  if (this.enabled_) {
-    this.maybeReinitTouchEvent_(e);
-    // dx in right-to-left cases is relative to the right.
-    var sign = this.useRightPositioningForRtl_ &&
-        this.isRightToLeft_() ? -1 : 1;
-    var dx = sign * (e.clientX - this.clientX);
-    var dy = e.clientY - this.clientY;
-    this.clientX = e.clientX;
-    this.clientY = e.clientY;
-    this.screenX = e.screenX;
-    this.screenY = e.screenY;
-
-    if (!this.dragging_) {
-      var diffX = this.startX - this.clientX;
-      var diffY = this.startY - this.clientY;
-      var distance = diffX * diffX + diffY * diffY;
-      if (distance > this.hysteresisDistanceSquared_) {
-        if (this.fireDragStart_(e)) {
-          this.dragging_ = true;
-        } else {
-          // DragListGroup disposes of the dragger if BEFOREDRAGSTART is
-          // canceled.
-          if (!this.isDisposed()) {
-            this.endDrag(e);
-          }
-          return;
-        }
-      }
-    }
-
-    var pos = this.calculatePosition_(dx, dy);
-    var x = pos.x;
-    var y = pos.y;
-
-    if (this.dragging_) {
-
-      var rv = this.dispatchEvent(new goog.fx.DragEvent(
-          goog.fx.Dragger.EventType.BEFOREDRAG, this, e.clientX, e.clientY,
-          e, x, y));
-
-      // Only do the defaultAction and dispatch drag event if predrag didn't
-      // prevent default
-      if (rv) {
-        this.doDrag(e, x, y, false);
-        e.preventDefault();
-      }
-    }
-  }
-};
-
-
-/**
- * Calculates the drag position.
- *
- * @param {number} dx The horizontal movement delta.
- * @param {number} dy The vertical movement delta.
- * @return {goog.math.Coordinate} The newly calculated drag element position.
- * @private
- */
-goog.fx.Dragger.prototype.calculatePosition_ = function(dx, dy) {
-  // Update the position for any change in body scrolling
-  var pageScroll = goog.dom.getDomHelper(this.document_).getDocumentScroll();
-  dx += pageScroll.x - this.pageScroll.x;
-  dy += pageScroll.y - this.pageScroll.y;
-  this.pageScroll = pageScroll;
-
-  this.deltaX += dx;
-  this.deltaY += dy;
-
-  var x = this.limitX(this.deltaX);
-  var y = this.limitY(this.deltaY);
-  return new goog.math.Coordinate(x, y);
-};
-
-
-/**
- * Event handler for scroll target scrolling.
- * @param {goog.events.BrowserEvent} e The event.
- * @private
- */
-goog.fx.Dragger.prototype.onScroll_ = function(e) {
-  var pos = this.calculatePosition_(0, 0);
-  e.clientX = this.clientX;
-  e.clientY = this.clientY;
-  this.doDrag(e, pos.x, pos.y, true);
-};
-
-
-/**
- * @param {goog.events.BrowserEvent} e The closure object
- *     representing the browser event that caused a drag event.
- * @param {number} x The new horizontal position for the drag element.
- * @param {number} y The new vertical position for the drag element.
- * @param {boolean} dragFromScroll Whether dragging was caused by scrolling
- *     the associated scroll target.
- * @protected
- */
-goog.fx.Dragger.prototype.doDrag = function(e, x, y, dragFromScroll) {
-  this.defaultAction(x, y);
-  this.dispatchEvent(new goog.fx.DragEvent(
-      goog.fx.Dragger.EventType.DRAG, this, e.clientX, e.clientY, e, x, y));
-};
-
-
-/**
- * Returns the 'real' x after limits are applied (allows for some
- * limits to be undefined).
- * @param {number} x X-coordinate to limit.
- * @return {number} The 'real' X-coordinate after limits are applied.
- */
-goog.fx.Dragger.prototype.limitX = function(x) {
-  var rect = this.limits;
-  var left = !isNaN(rect.left) ? rect.left : null;
-  var width = !isNaN(rect.width) ? rect.width : 0;
-  var maxX = left != null ? left + width : Infinity;
-  var minX = left != null ? left : -Infinity;
-  return Math.min(maxX, Math.max(minX, x));
-};
-
-
-/**
- * Returns the 'real' y after limits are applied (allows for some
- * limits to be undefined).
- * @param {number} y Y-coordinate to limit.
- * @return {number} The 'real' Y-coordinate after limits are applied.
- */
-goog.fx.Dragger.prototype.limitY = function(y) {
-  var rect = this.limits;
-  var top = !isNaN(rect.top) ? rect.top : null;
-  var height = !isNaN(rect.height) ? rect.height : 0;
-  var maxY = top != null ? top + height : Infinity;
-  var minY = top != null ? top : -Infinity;
-  return Math.min(maxY, Math.max(minY, y));
-};
-
-
-/**
- * Overridable function for handling the default action of the drag behaviour.
- * Normally this is simply moving the element to x,y though in some cases it
- * might be used to resize the layer.  This is basically a shortcut to
- * implementing a default ondrag event handler.
- * @param {number} x X-coordinate for target element. In right-to-left, x this
- *     is the number of pixels the target should be moved to from the right.
- * @param {number} y Y-coordinate for target element.
- */
-goog.fx.Dragger.prototype.defaultAction = function(x, y) {
-  if (this.useRightPositioningForRtl_ && this.isRightToLeft_()) {
-    this.target.style.right = x + 'px';
-  } else {
-    this.target.style.left = x + 'px';
-  }
-  this.target.style.top = y + 'px';
-};
-
-
-/**
- * @return {boolean} Whether the dragger is currently in the midst of a drag.
- */
-goog.fx.Dragger.prototype.isDragging = function() {
-  return this.dragging_;
-};
-
-
-
-/**
- * Object representing a drag event
- * @param {string} type Event type.
- * @param {goog.fx.Dragger} dragobj Drag object initiating event.
- * @param {number} clientX X-coordinate relative to the viewport.
- * @param {number} clientY Y-coordinate relative to the viewport.
- * @param {goog.events.BrowserEvent} browserEvent The closure object
- *   representing the browser event that caused this drag event.
- * @param {number=} opt_actX Optional actual x for drag if it has been limited.
- * @param {number=} opt_actY Optional actual y for drag if it has been limited.
- * @param {boolean=} opt_dragCanceled Whether the drag has been canceled.
- * @constructor
- * @extends {goog.events.Event}
- */
-goog.fx.DragEvent = function(type, dragobj, clientX, clientY, browserEvent,
-                             opt_actX, opt_actY, opt_dragCanceled) {
-  goog.events.Event.call(this, type);
-
-  /**
-   * X-coordinate relative to the viewport
-   * @type {number}
-   */
-  this.clientX = clientX;
-
-  /**
-   * Y-coordinate relative to the viewport
-   * @type {number}
-   */
-  this.clientY = clientY;
-
-  /**
-   * The closure object representing the browser event that caused this drag
-   * event.
-   * @type {goog.events.BrowserEvent}
-   */
-  this.browserEvent = browserEvent;
-
-  /**
-   * The real x-position of the drag if it has been limited
-   * @type {number}
-   */
-  this.left = goog.isDef(opt_actX) ? opt_actX : dragobj.deltaX;
-
-  /**
-   * The real y-position of the drag if it has been limited
-   * @type {number}
-   */
-  this.top = goog.isDef(opt_actY) ? opt_actY : dragobj.deltaY;
-
-  /**
-   * Reference to the drag object for this event
-   * @type {goog.fx.Dragger}
-   */
-  this.dragger = dragobj;
-
-  /**
-   * Whether drag was canceled with this event. Used to differentiate between
-   * a legitimate drag END that can result in an action and a drag END which is
-   * a result of a drag cancelation. For now it can happen 1) with drag END
-   * event on FireFox when user drags the mouse out of the window, 2) with
-   * drag END event on IE7 which is generated on MOUSEMOVE event when user
-   * moves the mouse into the document after the mouse button has been
-   * released, 3) when TOUCHCANCEL is raised instead of TOUCHEND (on touch
-   * events).
-   * @type {boolean}
-   */
-  this.dragCanceled = !!opt_dragCanceled;
-};
-goog.inherits(goog.fx.DragEvent, goog.events.Event);
-// Copyright 2007 The Closure Library Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS-IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * @fileoverview  Class for splitting two areas with draggable control for
- * changing size.
- *
- * The DOM that is created (or that can be decorated) looks like this:
- * <div class='goog-splitpane'>
- *   <div class='goog-splitpane-first-container'></div>
- *   <div class='goog-splitpane-second-container'></div>
- *   <div class='goog-splitpane-handle'></div>
- * </div>
- *
- * The content to be split goes in the first and second DIVs, the third one
- * is for managing (and styling) the splitter handle.
- *
- * @see ../demos/splitpane.html
- */
-
-
-goog.provide('goog.ui.SplitPane');
-goog.provide('goog.ui.SplitPane.Orientation');
-
-goog.require('goog.dom');
-goog.require('goog.dom.classes');
-goog.require('goog.events.EventType');
-goog.require('goog.fx.Dragger');
-goog.require('goog.fx.Dragger.EventType');
-goog.require('goog.math.Rect');
-goog.require('goog.math.Size');
-goog.require('goog.style');
-goog.require('goog.ui.Component');
-goog.require('goog.ui.Component.EventType');
-goog.require('goog.userAgent');
-
-
-
-/**
- * A left/right up/down Container SplitPane.
- * Create SplitPane with two goog.ui.Component opjects to split.
- * TODO(user): Support minimum splitpane size.
- * TODO(user): Allow component change/orientation after init.
- * TODO(user): Support hiding either side of handle (plus handle).
- * TODO(user): Look at setBorderBoxSize fixes and revist borderwidth code.
- *
- * @param {goog.ui.Component} firstComponent Left or Top component.
- * @param {goog.ui.Component} secondComponent Right or Bottom component.
- * @param {goog.ui.SplitPane.Orientation} orientation SplitPane orientation.
- * @param {goog.dom.DomHelper=} opt_domHelper Optional DOM helper.
- * @extends {goog.ui.Component}
- * @constructor
- */
-goog.ui.SplitPane = function(firstComponent, secondComponent, orientation,
-    opt_domHelper) {
-  goog.ui.Component.call(this, opt_domHelper);
-
-  /**
-   * The orientation of the containers.
-   * @type {goog.ui.SplitPane.Orientation}
-   * @private
-   */
-  this.orientation_ = orientation;
-
-  /**
-   * The left/top component.
-   * @type {goog.ui.Component}
-   * @private
-   */
-  this.firstComponent_ = firstComponent;
-  this.addChild(firstComponent);
-
-  /**
-   * The right/bottom component.
-   * @type {goog.ui.Component}
-   * @private
-   */
-  this.secondComponent_ = secondComponent;
-  this.addChild(secondComponent);
-};
-goog.inherits(goog.ui.SplitPane, goog.ui.Component);
-
-
-/**
- * Events.
- * @enum {string}
- */
-goog.ui.SplitPane.EventType = {
-  /**
-   * Dispatched after handle drag end.
-   */
-  HANDLE_DRAG_END: 'handle_drag_end'
-};
-
-
-/**
- * CSS class names for splitpane outer container.
- * @type {string}
- * @private
- */
-goog.ui.SplitPane.CLASS_NAME_ = goog.getCssName('goog-splitpane');
-
-
-/**
- * CSS class name for first splitpane container.
- * @type {string}
- * @private
- */
-goog.ui.SplitPane.FIRST_CONTAINER_CLASS_NAME_ =
-    goog.getCssName('goog-splitpane-first-container');
-
-
-/**
- * CSS class name for second splitpane container.
- * @type {string}
- * @private
- */
-goog.ui.SplitPane.SECOND_CONTAINER_CLASS_NAME_ =
-    goog.getCssName('goog-splitpane-second-container');
-
-
-/**
- * CSS class name for the splitpane handle.
- * @type {string}
- * @private
- */
-goog.ui.SplitPane.HANDLE_CLASS_NAME_ = goog.getCssName('goog-splitpane-handle');
-
-
-/**
- * CSS class name for the splitpane handle in horizontal orientation.
- * @type {string}
- * @private
- */
-goog.ui.SplitPane.HANDLE_CLASS_NAME_HORIZONTAL_ =
-    goog.getCssName('goog-splitpane-handle-horizontal');
-
-
-/**
- * CSS class name for the splitpane handle in horizontal orientation.
- * @type {string}
- * @private
- */
-goog.ui.SplitPane.HANDLE_CLASS_NAME_VERTICAL_ =
-    goog.getCssName('goog-splitpane-handle-vertical');
-
-
-/**
-  * The dragger to move the drag handle.
-  * @type {goog.fx.Dragger?}
-  * @private
-  */
-goog.ui.SplitPane.prototype.splitDragger_ = null;
-
-
-/**
- * The left/top component dom container.
- * @type {Element}
- * @private
- */
-goog.ui.SplitPane.prototype.firstComponentContainer_ = null;
-
-
-/**
- * The right/bottom component dom container.
- * @type {Element}
- * @private
- */
-goog.ui.SplitPane.prototype.secondComponentContainer_ = null;
-
-
-/**
- * The size (width or height) of the splitpane handle, default = 5.
- * @type {number}
- * @private
- */
-goog.ui.SplitPane.prototype.handleSize_ = 5;
-
-
-/**
- * The initial size (width or height) of the left or top component.
- * @type {?number}
- * @private
- */
-goog.ui.SplitPane.prototype.initialSize_ = null;
-
-
-/**
- * The saved size (width or height) of the left or top component on a
- * double-click (snap).
- * This needs to be saved so it can be restored after another double-click.
- * @type {?number}
- * @private
- */
-goog.ui.SplitPane.prototype.savedSnapSize_ = null;
-
-
-/**
- * The first component size, so we don't change it on a window resize.
- * @type {?number}
- * @private
- */
-goog.ui.SplitPane.prototype.firstComponentSize_ = null;
-
-
-/**
- * If we resize as they user moves the handle (default = true).
- * @type {boolean}
- * @private
- */
-goog.ui.SplitPane.prototype.continuousResize_ = true;
-
-
-/**
- * Iframe overlay to prevent iframes from grabbing events.
- * @type {Element}
- * @private
- */
-goog.ui.SplitPane.prototype.iframeOverlay_ = null;
-
-
-/**
- * Z indices for iframe overlay and splitter handle.
- * @enum {number}
- * @private
- */
-goog.ui.SplitPane.IframeOverlayIndex_ = {
-  HIDDEN: -1,
-  OVERLAY: 1,
-  SPLITTER_HANDLE: 2
-};
-
-
-/**
-* Orientation values for the splitpane.
-* @enum {string}
-*/
-goog.ui.SplitPane.Orientation = {
-
-  /**
-   * Horizontal orientation means splitter moves right-left.
-   */
-  HORIZONTAL: 'horizontal',
-
-  /**
-   * Vertical orientation means splitter moves up-down.
-   */
-  VERTICAL: 'vertical'
-};
-
-
-/**
- * Create the DOM node & text node needed for the splitpane.
- * @override
- */
-goog.ui.SplitPane.prototype.createDom = function() {
-  var dom = this.getDomHelper();
-
-  // Create the components.
-  var firstContainer = dom.createDom('div',
-      goog.ui.SplitPane.FIRST_CONTAINER_CLASS_NAME_);
-  var secondContainer = dom.createDom('div',
-      goog.ui.SplitPane.SECOND_CONTAINER_CLASS_NAME_);
-  var splitterHandle = dom.createDom('div',
-      goog.ui.SplitPane.HANDLE_CLASS_NAME_);
-
-  // Create the primary element, a DIV that holds the two containers and handle.
-  this.setElementInternal(dom.createDom('div', goog.ui.SplitPane.CLASS_NAME_,
-      firstContainer, secondContainer, splitterHandle));
-
-  this.firstComponentContainer_ = firstContainer;
-  this.secondComponentContainer_ = secondContainer;
-  this.splitpaneHandle_ = splitterHandle;
-  this.setUpHandle_();
-
-  this.finishSetup_();
-};
-
-
-/**
- * Determines if a given element can be decorated by this type of component.
- * @param {Element} element Element to decorate.
- * @return {boolean} True if the element can be decorated, false otherwise.
- * @override
- */
-goog.ui.SplitPane.prototype.canDecorate = function(element) {
-  var className = goog.ui.SplitPane.FIRST_CONTAINER_CLASS_NAME_;
-  var firstContainer = goog.dom.getElementsByTagNameAndClass(
-      null, className, element)[0];
-  if (!firstContainer) {
-    return false;
-  }
-  // Since we have this component, save it so we don't have to get it
-  // again in decorateInternal.  Same w/other components.
-  this.firstComponentContainer_ = firstContainer;
-
-  className = goog.ui.SplitPane.SECOND_CONTAINER_CLASS_NAME_;
-  var secondContainer = goog.dom.getElementsByTagNameAndClass(
-      null, className, element)[0];
-  if (!secondContainer) {
-    return false;
-  }
-  this.secondComponentContainer_ = secondContainer;
-
-  className = goog.ui.SplitPane.HANDLE_CLASS_NAME_;
-  var splitpaneHandle = goog.dom.getElementsByTagNameAndClass(
-      null, className, element)[0];
-  if (!splitpaneHandle) {
-    return false;
-  }
-  this.splitpaneHandle_ = splitpaneHandle;
-
-  // We found all the components we're looking for, so return true.
-  return true;
-};
-
-
-/**
- * Decorates the given HTML element as a SplitPane.  Overrides {@link
- * goog.ui.Component#decorateInternal}.  Considered protected.
- * @param {Element} element Element (SplitPane div) to decorate.
- * @protected
- * @override
- */
-goog.ui.SplitPane.prototype.decorateInternal = function(element) {
-  goog.ui.SplitPane.superClass_.decorateInternal.call(this, element);
-
-  this.setUpHandle_();
-
-  var elSize = goog.style.getBorderBoxSize(element);
-  this.setSize(new goog.math.Size(elSize.width, elSize.height));
-
-  this.finishSetup_();
-};
-
-
-/**
- * Parent the passed in components to the split containers.  Call their
- * createDom methods if necessary.
- * @private
- */
-goog.ui.SplitPane.prototype.finishSetup_ = function() {
-  var dom = this.getDomHelper();
-
-  if (!this.firstComponent_.getElement()) {
-    this.firstComponent_.createDom();
-  }
-
-  dom.appendChild(this.firstComponentContainer_,
-      this.firstComponent_.getElement());
-
-  if (!this.secondComponent_.getElement()) {
-    this.secondComponent_.createDom();
-  }
-
-  dom.appendChild(this.secondComponentContainer_,
-      this.secondComponent_.getElement());
-
-  this.splitDragger_ = new goog.fx.Dragger(this.splitpaneHandle_,
-      this.splitpaneHandle_);
-
-  this.firstComponentContainer_.style.position = 'absolute';
-  this.secondComponentContainer_.style.position = 'absolute';
-  var handleStyle = this.splitpaneHandle_.style;
-  handleStyle.position = 'absolute';
-  handleStyle.overflow = 'hidden';
-  handleStyle.zIndex =
-      goog.ui.SplitPane.IframeOverlayIndex_.SPLITTER_HANDLE;
-};
-
-
-/**
- * Setup all events and do an initial resize.
- * @override
- */
-goog.ui.SplitPane.prototype.enterDocument = function() {
-  goog.ui.SplitPane.superClass_.enterDocument.call(this);
-
-  // If position is not set in the inline style of the element, it is not
-  // possible to get the element's real CSS position until the element is in
-  // the document.
-  // When position:relative is set in the CSS and the element is not in the
-  // document, Safari, Chrome, and Opera always return the empty string; while
-  // IE always return "static".
-  // Do the final check to see if element's position is set as "relative",
-  // "absolute" or "fixed".
-  var element = this.getElement();
-  if (goog.style.getComputedPosition(element) == 'static') {
-    element.style.position = 'relative';
-  }
-
-  this.getHandler().
-      listen(this.splitpaneHandle_, goog.events.EventType.DBLCLICK,
-          this.handleDoubleClick_).
-      listen(this.splitDragger_, goog.fx.Dragger.EventType.START,
-          this.handleDragStart_).
-      listen(this.splitDragger_, goog.fx.Dragger.EventType.DRAG,
-          this.handleDrag_).
-      listen(this.splitDragger_, goog.fx.Dragger.EventType.END,
-          this.handleDragEnd_);
-
-  this.setFirstComponentSize(this.initialSize_);
-};
-
-
-/**
- * Sets the initial size of the left or top component.
- * @param {number} size The size in Pixels of the container.
- */
-goog.ui.SplitPane.prototype.setInitialSize = function(size) {
-  this.initialSize_ = size;
-};
-
-
-/**
- * Sets the SplitPane handle size.
- * TODO(user): Make sure this works after initialization.
- * @param {number} size The size of the handle in pixels.
- */
-goog.ui.SplitPane.prototype.setHandleSize = function(size) {
-  this.handleSize_ = size;
-};
-
-
-/**
- * Sets whether we resize on handle drag.
- * @param {boolean} continuous The continuous resize value.
- */
-goog.ui.SplitPane.prototype.setContinuousResize = function(continuous) {
-  this.continuousResize_ = continuous;
-};
-
-
-/**
- * Returns whether the orientation for the split pane is vertical
- * or not.
- * @return {boolean} True if the orientation is vertical, false otherwise.
- */
-goog.ui.SplitPane.prototype.isVertical = function() {
-  return this.orientation_ == goog.ui.SplitPane.Orientation.VERTICAL;
-};
-
-
-/**
- * Initializes the handle by assigning the correct height/width and adding
- * the correct class as per the orientation.
- * @private
- */
-goog.ui.SplitPane.prototype.setUpHandle_ = function() {
-  if (this.isVertical()) {
-    this.splitpaneHandle_.style.height = this.handleSize_ + 'px';
-    goog.dom.classes.add(this.splitpaneHandle_,
-        goog.ui.SplitPane.HANDLE_CLASS_NAME_VERTICAL_);
-  } else {
-    this.splitpaneHandle_.style.width = this.handleSize_ + 'px';
-    goog.dom.classes.add(this.splitpaneHandle_,
-        goog.ui.SplitPane.HANDLE_CLASS_NAME_HORIZONTAL_);
-  }
-};
-
-
-/**
- * Sets the orientation class for the split pane handle.
- * @protected
- */
-goog.ui.SplitPane.prototype.setOrientationClassForHandle = function() {
-  if (this.isVertical()) {
-    goog.dom.classes.swap(this.splitpaneHandle_,
-                          goog.ui.SplitPane.HANDLE_CLASS_NAME_HORIZONTAL_,
-                          goog.ui.SplitPane.HANDLE_CLASS_NAME_VERTICAL_);
-  } else {
-    goog.dom.classes.swap(this.splitpaneHandle_,
-                          goog.ui.SplitPane.HANDLE_CLASS_NAME_VERTICAL_,
-                          goog.ui.SplitPane.HANDLE_CLASS_NAME_HORIZONTAL_);
-  }
-};
-
-
-/**
- * Sets the orientation of the split pane.
- * @param {goog.ui.SplitPane.Orientation} orientation SplitPane orientation.
- */
-goog.ui.SplitPane.prototype.setOrientation = function(orientation) {
-  if (this.orientation_ != orientation) {
-    this.orientation_ = orientation;
-    var isVertical = this.isVertical();
-
-    // If the split pane is already in document, then the positions and sizes
-    // need to be adjusted.
-    if (this.isInDocument()) {
-      this.setOrientationClassForHandle();
-      // TODO(user): Should handleSize_ and initialSize_ also be adjusted ?
-      if (goog.isNumber(this.firstComponentSize_)) {
-        var splitpaneSize = goog.style.getBorderBoxSize(this.getElement());
-        var ratio = isVertical ? splitpaneSize.height / splitpaneSize.width :
-            splitpaneSize.width / splitpaneSize.height;
-        // TODO(user): Fix the behaviour for the case when the handle is
-        // placed on either of  the edges of the split pane. Also, similar
-        // behaviour is present in {@link #setSize}. Probably need to modify
-        // {@link #setFirstComponentSize}.
-        this.setFirstComponentSize(this.firstComponentSize_ * ratio);
-      } else {
-        this.setFirstComponentSize();
-      }
-    }
-  }
-};
-
-
-/**
- * Gets the orientation of the split pane.
- * @return {goog.ui.SplitPane.Orientation} The orientation.
- */
-goog.ui.SplitPane.prototype.getOrientation = function() {
-  return this.orientation_;
-};
-
-
-/**
- * Move and resize a container.  The sizing changes the BorderBoxSize.
- * @param {Element} element The element to move and size.
- * @param {goog.math.Rect} rect The top, left, width and height to change to.
- * @private
- */
-goog.ui.SplitPane.prototype.moveAndSize_ = function(element, rect) {
-
-  goog.style.setPosition(element, rect.left, rect.top);
-  // TODO(user): Add a goog.math.Size.max call for below.
-  goog.style.setBorderBoxSize(element,
-      new goog.math.Size(Math.max(rect.width, 0), Math.max(rect.height, 0)));
-};
-
-
-/**
- * @return {?number} The size of the left/top component.
- */
-goog.ui.SplitPane.prototype.getFirstComponentSize = function() {
-  return this.firstComponentSize_;
-};
-
-
-/**
- * Set the size of the left/top component, and resize the other component based
- * on that size and handle size.
- * @param {?number=} opt_size The size of the top or left, in pixels.
- */
-goog.ui.SplitPane.prototype.setFirstComponentSize = function(opt_size) {
-  var top = 0, left = 0;
-  var splitpaneSize = goog.style.getBorderBoxSize(this.getElement());
-
-  var isVertical = this.isVertical();
-  // Figure out first component size; it's either passed in, taken from the
-  // saved size, or is half of the total size.
-  var firstComponentSize = goog.isNumber(opt_size) ? opt_size :
-      goog.isNumber(this.firstComponentSize_) ? this.firstComponentSize_ :
-      Math.floor((isVertical ? splitpaneSize.height : splitpaneSize.width) / 2);
-  this.firstComponentSize_ = firstComponentSize;
-
-  var firstComponentWidth;
-  var firstComponentHeight;
-  var secondComponentWidth;
-  var secondComponentHeight;
-  var handleWidth;
-  var handleHeight;
-  var secondComponentLeft;
-  var secondComponentTop;
-  var handleLeft;
-  var handleTop;
-
-  if (isVertical) {
-
-    // Width for the handle and the first and second components will be the
-    // width of the split pane. The height for the first component will be
-    // the calculated first component size. The height for the second component
-    // will be the  total height minus the heights of the first component and
-    // the handle.
-    firstComponentHeight = firstComponentSize;
-    firstComponentWidth = splitpaneSize.width;
-    handleWidth = splitpaneSize.width;
-    handleHeight = this.handleSize_;
-    secondComponentHeight = splitpaneSize.height - firstComponentHeight -
-        handleHeight;
-    secondComponentWidth = splitpaneSize.width;
-    handleTop = top + firstComponentHeight;
-    handleLeft = left;
-    secondComponentTop = handleTop + handleHeight;
-    secondComponentLeft = left;
-  } else {
-
-    // Height for the handle and the first and second components will be the
-    // height of the split pane. The width for the first component will be
-    // the calculated first component size. The width for the second component
-    // will be the  total width minus the widths of the first component and
-    // the handle.
-    firstComponentWidth = firstComponentSize;
-    firstComponentHeight = splitpaneSize.height;
-    handleWidth = this.handleSize_;
-    handleHeight = splitpaneSize.height;
-    secondComponentWidth = splitpaneSize.width - firstComponentWidth -
-        handleWidth;
-    secondComponentHeight = splitpaneSize.height;
-    handleLeft = left + firstComponentWidth;
-    handleTop = top;
-    secondComponentLeft = handleLeft + handleWidth;
-    secondComponentTop = top;
-  }
-
-  // Now move and size the containers.
-  this.moveAndSize_(this.firstComponentContainer_,
-      new goog.math.Rect(left, top, firstComponentWidth, firstComponentHeight));
-
-  if (typeof this.firstComponent_.resize == 'function') {
-    this.firstComponent_.resize(new goog.math.Size(
-        firstComponentWidth, firstComponentHeight));
-  }
-
-  this.moveAndSize_(this.splitpaneHandle_, new goog.math.Rect(handleLeft,
-      handleTop, handleWidth, handleHeight));
-
-  this.moveAndSize_(this.secondComponentContainer_,
-      new goog.math.Rect(secondComponentLeft, secondComponentTop,
-          secondComponentWidth, secondComponentHeight));
-
-  if (typeof this.secondComponent_.resize == 'function') {
-    this.secondComponent_.resize(new goog.math.Size(secondComponentWidth,
-        secondComponentHeight));
-  }
-  // Fire a CHANGE event.
-  this.dispatchEvent(goog.ui.Component.EventType.CHANGE);
-};
-
-
-/**
- * Dummy object to work around compiler warning.
- * TODO(arv): Fix compiler or refactor to not depend on resize()
- * @private
- * @type {Object}
- */
-goog.ui.SplitPane.resizeWarningWorkaround_ = {
-  /**
-   * @param {goog.math.Size} size The new size.
-   */
-  resize: function(size) {}
-};
-
-
-/**
-  * Set the size of the splitpane.  This is usually called by the controlling
-  * application.  This will set the SplitPane BorderBoxSize.
-  * @param {goog.math.Size} size The size to set the splitpane.
-  */
-goog.ui.SplitPane.prototype.setSize = function(size) {
-  goog.style.setBorderBoxSize(this.getElement(), size);
-  if (this.iframeOverlay_) {
-    goog.style.setBorderBoxSize(this.iframeOverlay_, size);
-  }
-  this.setFirstComponentSize();
-};
-
-
-/**
- * Snap the container to the left or top on a Double-click.
- * @private
- */
-goog.ui.SplitPane.prototype.snapIt_ = function() {
-  var handlePos = goog.style.getRelativePosition(this.splitpaneHandle_,
-      this.firstComponentContainer_);
-  var firstBorderBoxSize =
-      goog.style.getBorderBoxSize(this.firstComponentContainer_);
-  var firstContentBoxSize =
-      goog.style.getContentBoxSize(this.firstComponentContainer_);
-
-  var isVertical = this.isVertical();
-
-  // Where do we snap the handle (what size to make the component) and what
-  // is the current handle position.
-  var snapSize;
-  var handlePosition;
-  if (isVertical) {
-    snapSize = firstBorderBoxSize.height - firstContentBoxSize.height;
-    handlePosition = handlePos.y;
-  } else {
-    snapSize = firstBorderBoxSize.width - firstContentBoxSize.width;
-    handlePosition = handlePos.x;
-  }
-
-  if (snapSize == handlePosition) {
-    // This means we're 'unsnapping', set it back to where it was.
-    this.setFirstComponentSize(this.savedSnapSize_);
-  } else {
-    // This means we're 'snapping', set the size to snapSize, and hide the
-    // first component.
-    if (isVertical) {
-      this.savedSnapSize_ = goog.style.getBorderBoxSize(
-          this.firstComponentContainer_).height;
-    } else {
-      this.savedSnapSize_ = goog.style.getBorderBoxSize(
-          this.firstComponentContainer_).width;
-    }
-    this.setFirstComponentSize(snapSize);
-  }
-};
-
-
-/**
- * Handle the start drag event - set up the dragger.
- * @param {goog.events.Event} e The event.
- * @private
- */
-goog.ui.SplitPane.prototype.handleDragStart_ = function(e) {
-
-  // Setup iframe overlay to prevent iframes from grabbing events.
-  if (!this.iframeOverlay_) {
-    // Create the overlay.
-    var cssStyles = 'position: relative';
-
-    if (goog.userAgent.IE) {
-      // IE doesn't look at this div unless it has a background, so we'll
-      // put one on, but make it opaque.
-      cssStyles += ';background-color: #000;filter: Alpha(Opacity=0)';
-    }
-    this.iframeOverlay_ =
-        this.getDomHelper().createDom('div', {'style': cssStyles});
-
-    this.getDomHelper().appendChild(this.getElement(), this.iframeOverlay_);
-  }
-  this.iframeOverlay_.style.zIndex =
-      goog.ui.SplitPane.IframeOverlayIndex_.OVERLAY;
-
-  goog.style.setBorderBoxSize(this.iframeOverlay_,
-      goog.style.getBorderBoxSize(this.getElement()));
-
-  var pos = goog.style.getPosition(this.firstComponentContainer_);
-
-  // For the size of the limiting box, we add the container content box sizes
-  // so that if the handle is placed all the way to the end or the start, the
-  // border doesn't exceed the total size. For position, we add the difference
-  // between the border box and content box sizes of the first container to the
-  // position of the first container. The start position should be such that
-  // there is no overlap of borders.
-  var limitWidth = 0;
-  var limitHeight = 0;
-  var limitx = pos.x;
-  var limity = pos.y;
-  var firstBorderBoxSize =
-      goog.style.getBorderBoxSize(this.firstComponentContainer_);
-  var firstContentBoxSize =
-      goog.style.getContentBoxSize(this.firstComponentContainer_);
-  var secondContentBoxSize =
-      goog.style.getContentBoxSize(this.secondComponentContainer_);
-  if (this.isVertical()) {
-    limitHeight = firstContentBoxSize.height + secondContentBoxSize.height;
-    limity += firstBorderBoxSize.height - firstContentBoxSize.height;
-  } else {
-    limitWidth = firstContentBoxSize.width + secondContentBoxSize.width;
-    limitx += firstBorderBoxSize.width - firstContentBoxSize.width;
-  }
-  var limits = new goog.math.Rect(limitx, limity, limitWidth, limitHeight);
-  this.splitDragger_.setLimits(limits);
-};
-
-
-/**
- * Find the location relative to the splitpane.
- * @param {number} left The x location relative to the window.
- * @return {number} The relative x location.
- * @private
- */
-goog.ui.SplitPane.prototype.getRelativeLeft_ = function(left) {
-  return left - goog.style.getPosition(this.firstComponentContainer_).x;
-};
-
-
-/**
- * Find the location relative to the splitpane.
- * @param {number} top The y location relative to the window.
- * @return {number} The relative y location.
- * @private
- */
-goog.ui.SplitPane.prototype.getRelativeTop_ = function(top) {
-  return top - goog.style.getPosition(this.firstComponentContainer_).y;
-};
-
-
-/**
- * Handle the drag event. Move the containers.
- * @param {goog.events.Event} e The event.
- * @private
- */
-goog.ui.SplitPane.prototype.handleDrag_ = function(e) {
-  if (this.continuousResize_) {
-    if (this.isVertical()) {
-      var top = this.getRelativeTop_(e.top);
-      this.setFirstComponentSize(top);
-    } else {
-      var left = this.getRelativeLeft_(e.left);
-      this.setFirstComponentSize(left);
-    }
-  }
-};
-
-
-/**
- * Handle the drag end event. If we're not doing continuous resize,
- * resize the component.  If we're doing continuous resize, the component
- * is already the correct size.
- * @param {goog.events.Event} e The event.
- * @private
- */
-goog.ui.SplitPane.prototype.handleDragEnd_ = function(e) {
-  // Push iframe overlay down.
-  this.iframeOverlay_.style.zIndex =
-      goog.ui.SplitPane.IframeOverlayIndex_.HIDDEN;
-  if (!this.continuousResize_) {
-    if (this.isVertical()) {
-      var top = this.getRelativeTop_(e.top);
-      this.setFirstComponentSize(top);
-    } else {
-      var left = this.getRelativeLeft_(e.left);
-      this.setFirstComponentSize(left);
-    }
-  }
-
-  this.dispatchEvent(goog.ui.SplitPane.EventType.HANDLE_DRAG_END);
-};
-
-
-/**
- * Handle the Double-click. Call the snapIt method which snaps the container
- * to the top or left.
- * @param {goog.events.Event} e The event.
- * @private
- */
-goog.ui.SplitPane.prototype.handleDoubleClick_ = function(e) {
-  this.snapIt_();
-};
-
-
-/** @override */
-goog.ui.SplitPane.prototype.disposeInternal = function() {
-  goog.ui.SplitPane.superClass_.disposeInternal.call(this);
-
-  this.splitDragger_.dispose();
-  this.splitDragger_ = null;
-
-  goog.dom.removeNode(this.iframeOverlay_);
-  this.iframeOverlay_ = null;
 };
 // Copyright 2006 The Closure Library Authors. All Rights Reserved.
 //
@@ -24372,242 +23388,6 @@ goog.positioning.AnchoredPosition.prototype.reposition = function(
                                     opt_margin,
                                     this.overflow_);
 };
-// Copyright 2008 The Closure Library Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS-IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * @fileoverview Utilities for creating functions. Loosely inspired by the
- * java classes: http://go/functions.java and http://go/predicate.java.
- *
- * @author nicksantos@google.com (Nick Santos)
- */
-
-
-goog.provide('goog.functions');
-
-
-/**
- * Creates a function that always returns the same value.
- * @param {*} retValue The value to return.
- * @return {!Function} The new function.
- */
-goog.functions.constant = function(retValue) {
-  return function() {
-    return retValue;
-  };
-};
-
-
-/**
- * Always returns false.
- * @type {function(...): boolean}
- */
-goog.functions.FALSE = goog.functions.constant(false);
-
-
-/**
- * Always returns true.
- * @type {function(...): boolean}
- */
-goog.functions.TRUE = goog.functions.constant(true);
-
-
-/**
- * Always returns NULL.
- * @type {function(...): null}
- */
-goog.functions.NULL = goog.functions.constant(null);
-
-
-/**
- * A simple function that returns the first argument of whatever is passed
- * into it.
- * @param {*=} opt_returnValue The single value that will be returned.
- * @param {...*} var_args Optional trailing arguments. These are ignored.
- * @return {?} The first argument passed in, or undefined if nothing was passed.
- *     We can't know the type -- just pass it along without type.
- */
-goog.functions.identity = function(opt_returnValue, var_args) {
-  return opt_returnValue;
-};
-
-
-/**
- * Creates a function that always throws an error with the given message.
- * @param {string} message The error message.
- * @return {!Function} The error-throwing function.
- */
-goog.functions.error = function(message) {
-  return function() {
-    throw Error(message);
-  };
-};
-
-
-/**
- * Given a function, create a function that keeps opt_numArgs arguments and
- * silently discards all additional arguments.
- * @param {Function} f The original function.
- * @param {number=} opt_numArgs The number of arguments to keep. Defaults to 0.
- * @return {!Function} A version of f that only keeps the first opt_numArgs
- *     arguments.
- */
-goog.functions.lock = function(f, opt_numArgs) {
-  opt_numArgs = opt_numArgs || 0;
-  return function() {
-    return f.apply(this, Array.prototype.slice.call(arguments, 0, opt_numArgs));
-  };
-};
-
-
-/**
- * Given a function, create a new function that swallows its return value
- * and replaces it with a new one.
- * @param {Function} f A function.
- * @param {*} retValue A new return value.
- * @return {!Function} A new function.
- */
-goog.functions.withReturnValue = function(f, retValue) {
-  return goog.functions.sequence(f, goog.functions.constant(retValue));
-};
-
-
-/**
- * Creates the composition of the functions passed in.
- * For example, (goog.functions.compose(f, g))(a) is equivalent to f(g(a)).
- * @param {...Function} var_args A list of functions.
- * @return {!Function} The composition of all inputs.
- */
-goog.functions.compose = function(var_args) {
-  var functions = arguments;
-  var length = functions.length;
-  return function() {
-    var result;
-    if (length) {
-      result = functions[length - 1].apply(this, arguments);
-    }
-
-    for (var i = length - 2; i >= 0; i--) {
-      result = functions[i].call(this, result);
-    }
-    return result;
-  };
-};
-
-
-/**
- * Creates a function that calls the functions passed in in sequence, and
- * returns the value of the last function. For example,
- * (goog.functions.sequence(f, g))(x) is equivalent to f(x),g(x).
- * @param {...Function} var_args A list of functions.
- * @return {!Function} A function that calls all inputs in sequence.
- */
-goog.functions.sequence = function(var_args) {
-  var functions = arguments;
-  var length = functions.length;
-  return function() {
-    var result;
-    for (var i = 0; i < length; i++) {
-      result = functions[i].apply(this, arguments);
-    }
-    return result;
-  };
-};
-
-
-/**
- * Creates a function that returns true if each of its components evaluates
- * to true. The components are evaluated in order, and the evaluation will be
- * short-circuited as soon as a function returns false.
- * For example, (goog.functions.and(f, g))(x) is equivalent to f(x) && g(x).
- * @param {...Function} var_args A list of functions.
- * @return {!Function} A function that ANDs its component functions.
- */
-goog.functions.and = function(var_args) {
-  var functions = arguments;
-  var length = functions.length;
-  return function() {
-    for (var i = 0; i < length; i++) {
-      if (!functions[i].apply(this, arguments)) {
-        return false;
-      }
-    }
-    return true;
-  };
-};
-
-
-/**
- * Creates a function that returns true if any of its components evaluates
- * to true. The components are evaluated in order, and the evaluation will be
- * short-circuited as soon as a function returns true.
- * For example, (goog.functions.or(f, g))(x) is equivalent to f(x) || g(x).
- * @param {...Function} var_args A list of functions.
- * @return {!Function} A function that ORs its component functions.
- */
-goog.functions.or = function(var_args) {
-  var functions = arguments;
-  var length = functions.length;
-  return function() {
-    for (var i = 0; i < length; i++) {
-      if (functions[i].apply(this, arguments)) {
-        return true;
-      }
-    }
-    return false;
-  };
-};
-
-
-/**
- * Creates a function that returns the Boolean opposite of a provided function.
- * For example, (goog.functions.not(f))(x) is equivalent to !f(x).
- * @param {!Function} f The original function.
- * @return {!Function} A function that delegates to f and returns opposite.
- */
-goog.functions.not = function(f) {
-  return function() {
-    return !f.apply(this, arguments);
-  };
-};
-
-
-/**
- * Generic factory function to construct an object given the constructor
- * and the arguments. Intended to be bound to create object factories.
- *
- * Callers should cast the result to the appropriate type for proper type
- * checking by the compiler.
- * @param {!Function} constructor The constructor for the Object.
- * @param {...*} var_args The arguments to be passed to the constructor.
- * @return {!Object} A new instance of the class given in {@code constructor}.
- */
-goog.functions.create = function(constructor, var_args) {
-  /** @constructor */
-  var temp = function() {};
-  temp.prototype = constructor.prototype;
-
-  // obj will have constructor's prototype in its chain and
-  // 'obj instanceof constructor' will be true.
-  var obj = new temp();
-
-  // obj is initialized by constructor.
-  // arguments is only array-like so lacks shift(), but can be used with
-  // the Array prototype function.
-  constructor.apply(obj, Array.prototype.slice.call(arguments, 1));
-  return obj;
-};
 // Copyright 2006 The Closure Library Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -24630,7 +23410,6 @@ goog.functions.create = function(constructor, var_args) {
 
 goog.provide('goog.positioning.AnchoredViewportPosition');
 
-goog.require('goog.functions');
 goog.require('goog.math.Box');
 goog.require('goog.positioning');
 goog.require('goog.positioning.AnchoredPosition');
@@ -24736,8 +23515,8 @@ goog.positioning.AnchoredViewportPosition.prototype.reposition = function(
   // If the desired position is outside the viewport try mirroring the corners
   // horizontally or vertically.
   if (status & goog.positioning.OverflowStatus.FAILED) {
-    var cornerFallback = this.correctCorner_(status, this.corner);
-    var movableCornerFallback = this.correctCorner_(status, movableCorner);
+    var cornerFallback = this.adjustCorner(status, this.corner);
+    var movableCornerFallback = this.adjustCorner(status, movableCorner);
 
     status = goog.positioning.positionAtAnchor(this.element, cornerFallback,
         movableElement, movableCornerFallback, null, opt_margin,
@@ -24747,8 +23526,8 @@ goog.positioning.AnchoredViewportPosition.prototype.reposition = function(
     if (status & goog.positioning.OverflowStatus.FAILED) {
       // If that also fails, pick the best corner from the two tries,
       // and adjust the position until it fits.
-      cornerFallback = this.correctCorner_(status, cornerFallback);
-      movableCornerFallback = this.correctCorner_(
+      cornerFallback = this.adjustCorner(status, cornerFallback);
+      movableCornerFallback = this.adjustCorner(
           status, movableCornerFallback);
 
       goog.positioning.positionAtAnchor(this.element, cornerFallback,
@@ -24761,13 +23540,13 @@ goog.positioning.AnchoredViewportPosition.prototype.reposition = function(
 
 
 /**
- * Flip the given corner if X or Y positioning failed.
+ * Adjusts the corner if X or Y positioning failed.
  * @param {number} status The status of the last positionAtAnchor call.
- * @param {goog.positioning.Corner} corner The corner to correct.
- * @return {goog.positioning.Corner} The new corner.
- * @private
+ * @param {goog.positioning.Corner} corner The corner to adjust.
+ * @return {goog.positioning.Corner} The adjusted corner.
+ * @protected
  */
-goog.positioning.AnchoredViewportPosition.prototype.correctCorner_ = function(
+goog.positioning.AnchoredViewportPosition.prototype.adjustCorner = function(
     status, corner) {
   if (status & goog.positioning.OverflowStatus.FAILED_HORIZONTAL) {
     corner = goog.positioning.flipCornerHorizontal(corner);
@@ -25930,596 +24709,6 @@ goog.ui.registry.setDecoratorByClassName(
     function() {
       // Separator defaults to using MenuSeparatorRenderer.
       return new goog.ui.Separator();
-    });
-// Copyright 2008 The Closure Library Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS-IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * @fileoverview Renderer for {@link goog.ui.MenuItem}s.
- *
- * @author attila@google.com (Attila Bodis)
- */
-
-goog.provide('goog.ui.MenuItemRenderer');
-
-goog.require('goog.dom');
-goog.require('goog.dom.a11y');
-goog.require('goog.dom.a11y.Role');
-goog.require('goog.dom.classes');
-goog.require('goog.ui.Component.State');
-goog.require('goog.ui.ControlContent');
-goog.require('goog.ui.ControlRenderer');
-
-
-
-/**
- * Default renderer for {@link goog.ui.MenuItem}s.  Each item has the following
- * structure:
- * <pre>
- *   <div class="goog-menuitem">
- *     <div class="goog-menuitem-content">
- *       ...(menu item contents)...
- *     </div>
- *   </div>
- * </pre>
- * @constructor
- * @extends {goog.ui.ControlRenderer}
- */
-goog.ui.MenuItemRenderer = function() {
-  goog.ui.ControlRenderer.call(this);
-
-  /**
-   * Commonly used CSS class names, cached here for convenience (and to avoid
-   * unnecessary string concatenation).
-   * @type {!Array.<string>}
-   * @private
-   */
-  this.classNameCache_ = [];
-};
-goog.inherits(goog.ui.MenuItemRenderer, goog.ui.ControlRenderer);
-goog.addSingletonGetter(goog.ui.MenuItemRenderer);
-
-
-/**
- * CSS class name the renderer applies to menu item elements.
- * @type {string}
- */
-goog.ui.MenuItemRenderer.CSS_CLASS = goog.getCssName('goog-menuitem');
-
-
-/**
- * Constants for referencing composite CSS classes.
- * @enum {number}
- * @private
- */
-goog.ui.MenuItemRenderer.CompositeCssClassIndex_ = {
-  HOVER: 0,
-  CHECKBOX: 1,
-  CONTENT: 2
-};
-
-
-/**
- * Returns the composite CSS class by using the cached value or by constructing
- * the value from the base CSS class and the passed index.
- * @param {goog.ui.MenuItemRenderer.CompositeCssClassIndex_} index Index for the
- *     CSS class - could be highlight, checkbox or content in usual cases.
- * @return {string} The composite CSS class.
- * @private
- */
-goog.ui.MenuItemRenderer.prototype.getCompositeCssClass_ = function(index) {
-  var result = this.classNameCache_[index];
-  if (!result) {
-    switch (index) {
-      case goog.ui.MenuItemRenderer.CompositeCssClassIndex_.HOVER:
-        result = goog.getCssName(this.getStructuralCssClass(), 'highlight');
-        break;
-      case goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CHECKBOX:
-        result = goog.getCssName(this.getStructuralCssClass(), 'checkbox');
-        break;
-      case goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CONTENT:
-        result = goog.getCssName(this.getStructuralCssClass(), 'content');
-        break;
-    }
-    this.classNameCache_[index] = result;
-  }
-
-  return result;
-};
-
-
-/** @override */
-goog.ui.MenuItemRenderer.prototype.getAriaRole = function() {
-  return goog.dom.a11y.Role.MENU_ITEM;
-};
-
-
-/**
- * Overrides {@link goog.ui.ControlRenderer#createDom} by adding extra markup
- * and stying to the menu item's element if it is selectable or checkable.
- * @param {goog.ui.Control} item Menu item to render.
- * @return {Element} Root element for the item.
- * @override
- */
-goog.ui.MenuItemRenderer.prototype.createDom = function(item) {
-  var element = item.getDomHelper().createDom(
-      'div', this.getClassNames(item).join(' '),
-      this.createContent(item.getContent(), item.getDomHelper()));
-  this.setEnableCheckBoxStructure(item, element,
-      item.isSupportedState(goog.ui.Component.State.SELECTED) ||
-      item.isSupportedState(goog.ui.Component.State.CHECKED));
-  return element;
-};
-
-
-/** @override */
-goog.ui.MenuItemRenderer.prototype.getContentElement = function(element) {
-  return /** @type {Element} */ (element && element.firstChild);
-};
-
-
-/**
- * Overrides {@link goog.ui.ControlRenderer#decorate} by initializing the
- * menu item to checkable based on whether the element to be decorated has
- * extra stying indicating that it should be.
- * @param {goog.ui.Control} item Menu item instance to decorate the element.
- * @param {Element} element Element to decorate.
- * @return {Element} Decorated element.
- * @override
- */
-goog.ui.MenuItemRenderer.prototype.decorate = function(item, element) {
-  if (!this.hasContentStructure(element)) {
-    element.appendChild(
-        this.createContent(element.childNodes, item.getDomHelper()));
-  }
-  if (goog.dom.classes.has(element, goog.getCssName('goog-option'))) {
-    item.setCheckable(true);
-    this.setCheckable(item, element, true);
-  }
-  return goog.ui.MenuItemRenderer.superClass_.decorate.call(this, item,
-      element);
-};
-
-
-/**
- * Takes a menu item's root element, and sets its content to the given text
- * caption or DOM structure.  Overrides the superclass immplementation by
- * making sure that the checkbox structure (for selectable/checkable menu
- * items) is preserved.
- * @param {Element} element The item's root element.
- * @param {goog.ui.ControlContent} content Text caption or DOM structure to be
- *     set as the item's content.
- * @override
- */
-goog.ui.MenuItemRenderer.prototype.setContent = function(element, content) {
-  // Save the checkbox element, if present.
-  var contentElement = this.getContentElement(element);
-  var checkBoxElement = this.hasCheckBoxStructure(element) ?
-      contentElement.firstChild : null;
-  goog.ui.MenuItemRenderer.superClass_.setContent.call(this, element, content);
-  if (checkBoxElement && !this.hasCheckBoxStructure(element)) {
-    // The call to setContent() blew away the checkbox element; reattach it.
-    contentElement.insertBefore(checkBoxElement,
-        contentElement.firstChild || null);
-  }
-};
-
-
-/**
- * Returns true if the element appears to have a proper menu item structure by
- * checking whether its first child has the appropriate structural class name.
- * @param {Element} element Element to check.
- * @return {boolean} Whether the element appears to have a proper menu item DOM.
- * @protected
- */
-goog.ui.MenuItemRenderer.prototype.hasContentStructure = function(element) {
-  var child = goog.dom.getFirstElementChild(element);
-  var contentClassName = this.getCompositeCssClass_(
-      goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CONTENT);
-  return !!child && goog.dom.classes.has(child, contentClassName);
-};
-
-
-/**
- * Wraps the given text caption or existing DOM node(s) in a structural element
- * containing the menu item's contents.
- * @param {goog.ui.ControlContent} content Menu item contents.
- * @param {goog.dom.DomHelper} dom DOM helper for document interaction.
- * @return {Element} Menu item content element.
- * @protected
- */
-goog.ui.MenuItemRenderer.prototype.createContent = function(content, dom) {
-  var contentClassName = this.getCompositeCssClass_(
-      goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CONTENT);
-  return dom.createDom('div', contentClassName, content);
-};
-
-
-/**
- * Enables/disables radio button semantics on the menu item.
- * @param {goog.ui.Control} item Menu item to update.
- * @param {Element} element Menu item element to update (may be null if the
- *     item hasn't been rendered yet).
- * @param {boolean} selectable Whether the item should be selectable.
- */
-goog.ui.MenuItemRenderer.prototype.setSelectable = function(item, element,
-    selectable) {
-  if (element) {
-    goog.dom.a11y.setRole(element, selectable ?
-        goog.dom.a11y.Role.MENU_ITEM_RADIO :
-        /** @type {string} */ (this.getAriaRole()));
-    this.setEnableCheckBoxStructure(item, element, selectable);
-  }
-};
-
-
-/**
- * Enables/disables checkbox semantics on the menu item.
- * @param {goog.ui.Control} item Menu item to update.
- * @param {Element} element Menu item element to update (may be null if the
- *     item hasn't been rendered yet).
- * @param {boolean} checkable Whether the item should be checkable.
- */
-goog.ui.MenuItemRenderer.prototype.setCheckable = function(item, element,
-    checkable) {
-  if (element) {
-    goog.dom.a11y.setRole(element, checkable ?
-        goog.dom.a11y.Role.MENU_ITEM_CHECKBOX :
-        /** @type {string} */ (this.getAriaRole()));
-    this.setEnableCheckBoxStructure(item, element, checkable);
-  }
-};
-
-
-/**
- * Determines whether the item contains a checkbox element.
- * @param {Element} element Menu item root element.
- * @return {boolean} Whether the element contains a checkbox element.
- * @protected
- */
-goog.ui.MenuItemRenderer.prototype.hasCheckBoxStructure = function(element) {
-  var contentElement = this.getContentElement(element);
-  if (contentElement) {
-    var child = contentElement.firstChild;
-    var checkboxClassName = this.getCompositeCssClass_(
-        goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CHECKBOX);
-    return !!child && goog.dom.classes.has(child, checkboxClassName);
-  }
-  return false;
-};
-
-
-/**
- * Adds or removes extra markup and CSS styling to the menu item to make it
- * selectable or non-selectable, depending on the value of the
- * {@code selectable} argument.
- * @param {goog.ui.Control} item Menu item to update.
- * @param {Element} element Menu item element to update.
- * @param {boolean} enable Whether to add or remove the checkbox structure.
- * @protected
- */
-goog.ui.MenuItemRenderer.prototype.setEnableCheckBoxStructure = function(item,
-    element, enable) {
-  if (enable != this.hasCheckBoxStructure(element)) {
-    goog.dom.classes.enable(element, goog.getCssName('goog-option'), enable);
-    var contentElement = this.getContentElement(element);
-    if (enable) {
-      // Insert checkbox structure.
-      var checkboxClassName = this.getCompositeCssClass_(
-          goog.ui.MenuItemRenderer.CompositeCssClassIndex_.CHECKBOX);
-      contentElement.insertBefore(
-          item.getDomHelper().createDom('div', checkboxClassName),
-          contentElement.firstChild || null);
-    } else {
-      // Remove checkbox structure.
-      contentElement.removeChild(contentElement.firstChild);
-    }
-  }
-};
-
-
-/**
- * Takes a single {@link goog.ui.Component.State}, and returns the
- * corresponding CSS class name (null if none).  Overrides the superclass
- * implementation by using 'highlight' as opposed to 'hover' as the CSS
- * class name suffix for the HOVER state, for backwards compatibility.
- * @param {goog.ui.Component.State} state Component state.
- * @return {string|undefined} CSS class representing the given state
- *     (undefined if none).
- * @override
- */
-goog.ui.MenuItemRenderer.prototype.getClassForState = function(state) {
-  switch (state) {
-    case goog.ui.Component.State.HOVER:
-      // We use 'highlight' as the suffix, for backwards compatibility.
-      return this.getCompositeCssClass_(
-          goog.ui.MenuItemRenderer.CompositeCssClassIndex_.HOVER);
-    case goog.ui.Component.State.CHECKED:
-    case goog.ui.Component.State.SELECTED:
-    // We use 'goog-option-selected' as the class, for backwards compatibility.
-      return goog.getCssName('goog-option-selected');
-    default:
-      return goog.ui.MenuItemRenderer.superClass_.getClassForState.call(this,
-          state);
-  }
-};
-
-
-/**
- * Takes a single CSS class name which may represent a component state, and
- * returns the corresponding component state (0x00 if none).  Overrides the
- * superclass implementation by treating 'goog-option-selected' as special,
- * for backwards compatibility.
- * @param {string} className CSS class name, possibly representing a component
- *     state.
- * @return {goog.ui.Component.State} state Component state corresponding
- *     to the given CSS class (0x00 if none).
- * @override
- */
-goog.ui.MenuItemRenderer.prototype.getStateFromClass = function(className) {
-  var hoverClassName = this.getCompositeCssClass_(
-      goog.ui.MenuItemRenderer.CompositeCssClassIndex_.HOVER);
-  switch (className) {
-    case goog.getCssName('goog-option-selected'):
-      return goog.ui.Component.State.CHECKED;
-    case hoverClassName:
-      return goog.ui.Component.State.HOVER;
-    default:
-      return goog.ui.MenuItemRenderer.superClass_.getStateFromClass.call(this,
-          className);
-  }
-};
-
-
-/** @override */
-goog.ui.MenuItemRenderer.prototype.getCssClass = function() {
-  return goog.ui.MenuItemRenderer.CSS_CLASS;
-};
-// Copyright 2007 The Closure Library Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS-IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * @fileoverview A class for representing items in menus.
- * @see goog.ui.Menu
- *
- * @see ../demos/menuitem.html
- */
-
-goog.provide('goog.ui.MenuItem');
-
-goog.require('goog.array');
-goog.require('goog.dom');
-goog.require('goog.dom.classes');
-goog.require('goog.events.KeyCodes');
-goog.require('goog.math.Coordinate');
-goog.require('goog.string');
-goog.require('goog.ui.Component.State');
-goog.require('goog.ui.Control');
-goog.require('goog.ui.ControlContent');
-goog.require('goog.ui.MenuItemRenderer');
-goog.require('goog.ui.registry');
-
-
-
-/**
- * Class representing an item in a menu.
- *
- * @param {goog.ui.ControlContent} content Text caption or DOM structure to
- *     display as the content of the item (use to add icons or styling to
- *     menus).
- * @param {*=} opt_model Data/model associated with the menu item.
- * @param {goog.dom.DomHelper=} opt_domHelper Optional DOM helper used for
- *     document interactions.
- * @param {goog.ui.MenuItemRenderer=} opt_renderer Optional renderer.
- * @constructor
- * @extends {goog.ui.Control}
- */
-goog.ui.MenuItem = function(content, opt_model, opt_domHelper, opt_renderer) {
-  goog.ui.Control.call(this, content, opt_renderer ||
-      goog.ui.MenuItemRenderer.getInstance(), opt_domHelper);
-  this.setValue(opt_model);
-};
-goog.inherits(goog.ui.MenuItem, goog.ui.Control);
-
-
-/**
- * The access key for this menu item. This key allows the user to quickly
- * trigger this item's action with they keyboard. For example, setting the
- * mnenomic key to 70 (F), when the user opens the menu and hits "F," the
- * menu item is triggered.
- *
- * @type {goog.events.KeyCodes}
- * @private
- */
-goog.ui.MenuItem.mnemonicKey_;
-
-
-/**
- * The class set on an element that contains a parenthetical mnemonic key hint.
- * Parenthetical hints are added to items in which the mnemonic key is not found
- * within the menu item's caption itself. For example, if you have a menu item
- * with the caption "Record," but its mnemonic key is "I", the caption displayed
- * in the menu will appear as "Record (I)".
- *
- * @type {string}
- * @private
- */
-goog.ui.MenuItem.MNEMONIC_WRAPPER_CLASS_ =
-    goog.getCssName('goog-menuitem-mnemonic-separator');
-
-
-/**
- * The class set on an element that contains a keyboard accelerator hint.
- * @type {string}
- * @private
- */
-goog.ui.MenuItem.ACCELERATOR_CLASS_ = goog.getCssName('goog-menuitem-accel');
-
-
-// goog.ui.Component and goog.ui.Control implementation.
-
-
-/**
- * Returns the value associated with the menu item.  The default implementation
- * returns the model object associated with the item (if any), or its caption.
- * @return {*} Value associated with the menu item, if any, or its caption.
- */
-goog.ui.MenuItem.prototype.getValue = function() {
-  var model = this.getModel();
-  return model != null ? model : this.getCaption();
-};
-
-
-/**
- * Sets the value associated with the menu item.  The default implementation
- * stores the value as the model of the menu item.
- * @param {*} value Value to be associated with the menu item.
- */
-goog.ui.MenuItem.prototype.setValue = function(value) {
-  this.setModel(value);
-};
-
-
-/**
- * Sets the menu item to be selectable or not.  Set to true for menu items
- * that represent selectable options.
- * @param {boolean} selectable Whether the menu item is selectable.
- */
-goog.ui.MenuItem.prototype.setSelectable = function(selectable) {
-  this.setSupportedState(goog.ui.Component.State.SELECTED, selectable);
-  if (this.isChecked() && !selectable) {
-    this.setChecked(false);
-  }
-
-  var element = this.getElement();
-  if (element) {
-    this.getRenderer().setSelectable(this, element, selectable);
-  }
-};
-
-
-/**
- * Sets the menu item to be checkable or not.  Set to true for menu items
- * that represent checkable options.
- * @param {boolean} checkable Whether the menu item is checkable.
- */
-goog.ui.MenuItem.prototype.setCheckable = function(checkable) {
-  this.setSupportedState(goog.ui.Component.State.CHECKED, checkable);
-
-  var element = this.getElement();
-  if (element) {
-    this.getRenderer().setCheckable(this, element, checkable);
-  }
-};
-
-
-/**
- * Returns the text caption of the component while ignoring accelerators.
- * @override
- */
-goog.ui.MenuItem.prototype.getCaption = function() {
-  var content = this.getContent();
-  if (goog.isArray(content)) {
-    var acceleratorClass = goog.ui.MenuItem.ACCELERATOR_CLASS_;
-    var mnemonicWrapClass = goog.ui.MenuItem.MNEMONIC_WRAPPER_CLASS_;
-    var caption = goog.array.map(content, function(node) {
-      var classes = goog.dom.classes.get(node);
-      if (goog.array.contains(classes, acceleratorClass) ||
-          goog.array.contains(classes, mnemonicWrapClass)) {
-        return '';
-      } else {
-        return goog.dom.getRawTextContent(node);
-      }
-    }).join('');
-    return goog.string.collapseBreakingSpaces(caption);
-  }
-  return goog.ui.MenuItem.superClass_.getCaption.call(this);
-};
-
-
-/** @override */
-goog.ui.MenuItem.prototype.handleMouseUp = function(e) {
-  var parentMenu = /** @type {goog.ui.Menu} */ (this.getParent());
-
-  if (parentMenu) {
-    var oldCoords = parentMenu.openingCoords;
-    // Clear out the saved opening coords immediately so they're not used twice.
-    parentMenu.openingCoords = null;
-
-    if (oldCoords && goog.isNumber(e.clientX)) {
-      var newCoords = new goog.math.Coordinate(e.clientX, e.clientY);
-      if (goog.math.Coordinate.equals(oldCoords, newCoords)) {
-        // This menu was opened by a mousedown and we're handling the consequent
-        // mouseup. The coords haven't changed, meaning this was a simple click,
-        // not a click and drag. Don't do the usual behavior because the menu
-        // just popped up under the mouse and the user didn't mean to activate
-        // this item.
-        return;
-      }
-    }
-  }
-
-  goog.base(this, 'handleMouseUp', e);
-};
-
-
-/** @override */
-goog.ui.MenuItem.prototype.handleKeyEventInternal = function(e) {
-  if (e.keyCode == this.getMnemonic() && this.performActionInternal(e)) {
-    return true;
-  } else {
-    return goog.base(this, 'handleKeyEventInternal', e);
-  }
-};
-
-
-/**
- * Sets the mnemonic key code. The mnemonic is the key associated with this
- * action.
- * @param {goog.events.KeyCodes} key The key code.
- */
-goog.ui.MenuItem.prototype.setMnemonic = function(key) {
-  this.mnemonicKey_ = key;
-};
-
-
-/**
- * Gets the mnemonic key code. The mnemonic is the key associated with this
- * action.
- * @return {goog.events.KeyCodes} The key code of the mnemonic key.
- */
-goog.ui.MenuItem.prototype.getMnemonic = function() {
-  return this.mnemonicKey_;
-};
-
-
-// Register a decorator factory function for goog.ui.MenuItems.
-goog.ui.registry.setDecoratorByClassName(goog.ui.MenuItemRenderer.CSS_CLASS,
-    function() {
-      // MenuItem defaults to using MenuItemRenderer.
-      return new goog.ui.MenuItem(null);
     });
 // Copyright 2007 The Closure Library Authors. All Rights Reserved.
 //
@@ -29531,6 +27720,2530 @@ goog.ui.registry.setDecoratorByClassName(goog.ui.MenuButtonRenderer.CSS_CLASS,
       // MenuButton defaults to using MenuButtonRenderer.
       return new goog.ui.MenuButton(null);
     });
+// Copyright 2007 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview Single-selection model implemenation.
+ *
+ * TODO(attila): Add keyboard & mouse event hooks?
+ * TODO(attila): Add multiple selection?
+ *
+ * @author attila@google.com (Attila Bodis)
+ */
+
+
+goog.provide('goog.ui.SelectionModel');
+
+goog.require('goog.array');
+goog.require('goog.events.EventTarget');
+goog.require('goog.events.EventType');
+
+
+
+/**
+ * Single-selection model.  Dispatches a {@link goog.events.EventType.SELECT}
+ * event when a selection is made.
+ * @param {Array.<Object>=} opt_items Array of items; defaults to empty.
+ * @extends {goog.events.EventTarget}
+ * @constructor
+ */
+goog.ui.SelectionModel = function(opt_items) {
+  goog.events.EventTarget.call(this);
+
+  /**
+   * Array of items controlled by the selection model.  If the items support
+   * the {@code setSelected(Boolean)} interface, they will be (de)selected
+   * as needed.
+   * @type {!Array.<Object>}
+   * @private
+   */
+  this.items_ = [];
+  this.addItems(opt_items);
+};
+goog.inherits(goog.ui.SelectionModel, goog.events.EventTarget);
+
+
+/**
+ * The currently selected item (null if none).
+ * @type {Object}
+ * @private
+ */
+goog.ui.SelectionModel.prototype.selectedItem_ = null;
+
+
+/**
+ * Selection handler function.  Called with two arguments (the item to be
+ * selected or deselected, and a Boolean indicating whether the item is to
+ * be selected or deselected).
+ * @type {Function}
+ * @private
+ */
+goog.ui.SelectionModel.prototype.selectionHandler_ = null;
+
+
+/**
+ * Returns the selection handler function used by the selection model to change
+ * the internal selection state of items under its control.
+ * @return {Function} Selection handler function (null if none).
+ */
+goog.ui.SelectionModel.prototype.getSelectionHandler = function() {
+  return this.selectionHandler_;
+};
+
+
+/**
+ * Sets the selection handler function to be used by the selection model to
+ * change the internal selection state of items under its control.  The
+ * function must take two arguments:  an item and a Boolean to indicate whether
+ * the item is to be selected or deselected.  Selection handler functions are
+ * only needed if the items in the selection model don't natively support the
+ * {@code setSelected(Boolean)} interface.
+ * @param {Function} handler Selection handler function.
+ */
+goog.ui.SelectionModel.prototype.setSelectionHandler = function(handler) {
+  this.selectionHandler_ = handler;
+};
+
+
+/**
+ * Returns the number of items controlled by the selection model.
+ * @return {number} Number of items.
+ */
+goog.ui.SelectionModel.prototype.getItemCount = function() {
+  return this.items_.length;
+};
+
+
+/**
+ * Returns the 0-based index of the given item within the selection model, or
+ * -1 if no such item is found.
+ * @param {Object|undefined} item Item to look for.
+ * @return {number} Index of the given item (-1 if none).
+ */
+goog.ui.SelectionModel.prototype.indexOfItem = function(item) {
+  return item ? goog.array.indexOf(this.items_, item) : -1;
+};
+
+
+/**
+ * @return {Object|undefined} The first item, or undefined if there are no items
+ *     in the model.
+ */
+goog.ui.SelectionModel.prototype.getFirst = function() {
+  return this.items_[0];
+};
+
+
+/**
+ * @return {Object|undefined} The last item, or undefined if there are no items
+ *     in the model.
+ */
+goog.ui.SelectionModel.prototype.getLast = function() {
+  return this.items_[this.items_.length - 1];
+};
+
+
+/**
+ * Returns the item at the given 0-based index.
+ * @param {number} index Index of the item to return.
+ * @return {Object} Item at the given index (null if none).
+ */
+goog.ui.SelectionModel.prototype.getItemAt = function(index) {
+  return this.items_[index] || null;
+};
+
+
+/**
+ * Bulk-adds items to the selection model.  This is more efficient than calling
+ * {@link #addItem} for each new item.
+ * @param {Array.<Object>|undefined} items New items to add.
+ */
+goog.ui.SelectionModel.prototype.addItems = function(items) {
+  if (items) {
+    // New items shouldn't be selected.
+    goog.array.forEach(items, function(item) {
+      this.selectItem_(item, false);
+    }, this);
+    goog.array.extend(this.items_, items);
+  }
+};
+
+
+/**
+ * Adds an item at the end of the list.
+ * @param {Object} item Item to add.
+ */
+goog.ui.SelectionModel.prototype.addItem = function(item) {
+  this.addItemAt(item, this.getItemCount());
+};
+
+
+/**
+ * Adds an item at the given index.
+ * @param {Object} item Item to add.
+ * @param {number} index Index at which to add the new item.
+ */
+goog.ui.SelectionModel.prototype.addItemAt = function(item, index) {
+  if (item) {
+    // New items must not be selected.
+    this.selectItem_(item, false);
+    goog.array.insertAt(this.items_, item, index);
+  }
+};
+
+
+/**
+ * Removes the given item (if it exists).  Dispatches a {@code SELECT} event if
+ * the removed item was the currently selected item.
+ * @param {Object} item Item to remove.
+ */
+goog.ui.SelectionModel.prototype.removeItem = function(item) {
+  if (item && goog.array.remove(this.items_, item)) {
+    if (item == this.selectedItem_) {
+      this.selectedItem_ = null;
+      this.dispatchEvent(goog.events.EventType.SELECT);
+    }
+  }
+};
+
+
+/**
+ * Removes the item at the given index.
+ * @param {number} index Index of the item to remove.
+ */
+goog.ui.SelectionModel.prototype.removeItemAt = function(index) {
+  this.removeItem(this.getItemAt(index));
+};
+
+
+/**
+ * @return {Object} The currently selected item, or null if none.
+ */
+goog.ui.SelectionModel.prototype.getSelectedItem = function() {
+  return this.selectedItem_;
+};
+
+
+/**
+ * @return {!Array.<Object>} All items in the selection model.
+ */
+goog.ui.SelectionModel.prototype.getItems = function() {
+  return goog.array.clone(this.items_);
+};
+
+
+/**
+ * Selects the given item, deselecting any previously selected item, and
+ * dispatches a {@code SELECT} event.
+ * @param {Object} item Item to select (null to clear the selection).
+ */
+goog.ui.SelectionModel.prototype.setSelectedItem = function(item) {
+  if (item != this.selectedItem_) {
+    this.selectItem_(this.selectedItem_, false);
+    this.selectedItem_ = item;
+    this.selectItem_(item, true);
+  }
+
+  // Always dispatch a SELECT event; let listeners decide what to do if the
+  // selected item hasn't changed.
+  this.dispatchEvent(goog.events.EventType.SELECT);
+};
+
+
+/**
+ * @return {number} The 0-based index of the currently selected item, or -1
+ *     if none.
+ */
+goog.ui.SelectionModel.prototype.getSelectedIndex = function() {
+  return this.indexOfItem(this.selectedItem_);
+};
+
+
+/**
+ * Selects the item at the given index, deselecting any previously selected
+ * item, and dispatches a {@code SELECT} event.
+ * @param {number} index Index to select (-1 to clear the selection).
+ */
+goog.ui.SelectionModel.prototype.setSelectedIndex = function(index) {
+  this.setSelectedItem(this.getItemAt(index));
+};
+
+
+/**
+ * Clears the selection model by removing all items from the selection.
+ */
+goog.ui.SelectionModel.prototype.clear = function() {
+  goog.array.clear(this.items_);
+  this.selectedItem_ = null;
+};
+
+
+/** @override */
+goog.ui.SelectionModel.prototype.disposeInternal = function() {
+  goog.ui.SelectionModel.superClass_.disposeInternal.call(this);
+  delete this.items_;
+  this.selectedItem_ = null;
+};
+
+
+/**
+ * Private helper; selects or deselects the given item based on the value of
+ * the {@code select} argument.  If a selection handler has been registered
+ * (via {@link #setSelectionHandler}, calls it to update the internal selection
+ * state of the item.  Otherwise, attempts to call {@code setSelected(Boolean)}
+ * on the item itself, provided the object supports that interface.
+ * @param {Object} item Item to select or deselect.
+ * @param {boolean} select If true, the object will be selected; if false, it
+ *     will be deselected.
+ * @private
+ */
+goog.ui.SelectionModel.prototype.selectItem_ = function(item, select) {
+  if (item) {
+    if (typeof this.selectionHandler_ == 'function') {
+      // Use the registered selection handler function.
+      this.selectionHandler_(item, select);
+    } else if (typeof item.setSelected == 'function') {
+      // Call setSelected() on the item, if it supports it.
+      item.setSelected(select);
+    }
+  }
+};
+// Copyright 2007 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview A class that supports single selection from a dropdown menu,
+ * with semantics similar to the native HTML <code>&lt;select&gt;</code>
+ * element.
+ *
+ * @author attila@google.com (Attila Bodis)
+ * @see ../demos/select.html
+ */
+
+goog.provide('goog.ui.Select');
+
+goog.require('goog.dom.a11y');
+goog.require('goog.dom.a11y.Role');
+goog.require('goog.dom.a11y.State');
+goog.require('goog.events.EventType');
+goog.require('goog.ui.Component.EventType');
+goog.require('goog.ui.ControlContent');
+goog.require('goog.ui.MenuButton');
+goog.require('goog.ui.SelectionModel');
+goog.require('goog.ui.registry');
+
+
+
+/**
+ * A selection control.  Extends {@link goog.ui.MenuButton} by composing a
+ * menu with a selection model, and automatically updating the button's caption
+ * based on the current selection.
+ *
+ * Select fires the following events:
+ *   CHANGE - after selection changes.
+ *
+ * @param {goog.ui.ControlContent} caption Default caption or existing DOM
+ *     structure to display as the button's caption when nothing is selected.
+ * @param {goog.ui.Menu=} opt_menu Menu containing selection options.
+ * @param {goog.ui.ButtonRenderer=} opt_renderer Renderer used to render or
+ *     decorate the control; defaults to {@link goog.ui.MenuButtonRenderer}.
+ * @param {goog.dom.DomHelper=} opt_domHelper Optional DOM hepler, used for
+ *     document interaction.
+ * @constructor
+ * @extends {goog.ui.MenuButton}
+ */
+goog.ui.Select = function(caption, opt_menu, opt_renderer, opt_domHelper) {
+  goog.ui.MenuButton.call(this, caption, opt_menu, opt_renderer, opt_domHelper);
+  this.setDefaultCaption(caption);
+  this.setPreferredAriaRole(goog.dom.a11y.Role.LISTBOX);
+};
+goog.inherits(goog.ui.Select, goog.ui.MenuButton);
+
+
+/**
+ * The selection model controlling the items in the menu.
+ * @type {goog.ui.SelectionModel}
+ * @private
+ */
+goog.ui.Select.prototype.selectionModel_ = null;
+
+
+/**
+ * Default caption to be shown when no option is selected.
+ * @type {goog.ui.ControlContent}
+ * @private
+ */
+goog.ui.Select.prototype.defaultCaption_ = null;
+
+
+/** @override */
+goog.ui.Select.prototype.enterDocument = function() {
+  goog.ui.Select.superClass_.enterDocument.call(this);
+  this.updateCaption();
+  this.listenToSelectionModelEvents_();
+  // Need to set HASPOPUP to false since it's set to true in the parent class.
+  goog.dom.a11y.setState(this.getElement(),
+      goog.dom.a11y.State.HASPOPUP, 'false');
+};
+
+
+/**
+ * Decorates the given element with this control.  Overrides the superclass
+ * implementation by initializing the default caption on the select button.
+ * @param {Element} element Element to decorate.
+ * @override
+ */
+goog.ui.Select.prototype.decorateInternal = function(element) {
+  goog.ui.Select.superClass_.decorateInternal.call(this, element);
+  var caption = this.getCaption();
+  if (caption) {
+    // Initialize the default caption.
+    this.setDefaultCaption(caption);
+  } else {
+    // There is no default caption; select the first option.
+    this.setSelectedIndex(0);
+  }
+};
+
+
+/** @override */
+goog.ui.Select.prototype.disposeInternal = function() {
+  goog.ui.Select.superClass_.disposeInternal.call(this);
+
+  if (this.selectionModel_) {
+    this.selectionModel_.dispose();
+    this.selectionModel_ = null;
+  }
+
+  this.defaultCaption_ = null;
+};
+
+
+/**
+ * Handles {@link goog.ui.Component.EventType.ACTION} events dispatched by
+ * the menu item clicked by the user.  Updates the selection model, calls
+ * the superclass implementation to hide the menu, stops the propagation of
+ * the event, and dispatches an ACTION event on behalf of the select control
+ * itself.  Overrides {@link goog.ui.MenuButton#handleMenuAction}.
+ * @param {goog.events.Event} e Action event to handle.
+ * @override
+ */
+goog.ui.Select.prototype.handleMenuAction = function(e) {
+  this.setSelectedItem(/** @type {goog.ui.MenuItem} */ (e.target));
+  goog.base(this, 'handleMenuAction', e);
+
+  // NOTE(user): We should not stop propagation and then fire
+  // our own ACTION event. Fixing this without breaking anyone
+  // relying on this event is hard though.
+  e.stopPropagation();
+  this.dispatchEvent(goog.ui.Component.EventType.ACTION);
+};
+
+
+/**
+ * Handles {@link goog.events.EventType.SELECT} events raised by the
+ * selection model when the selection changes.  Updates the contents of the
+ * select button.
+ * @param {goog.events.Event} e Selection event to handle.
+ */
+goog.ui.Select.prototype.handleSelectionChange = function(e) {
+  var item = this.getSelectedItem();
+  goog.ui.Select.superClass_.setValue.call(this, item && item.getValue());
+  this.updateCaption();
+};
+
+
+/**
+ * Replaces the menu currently attached to the control (if any) with the given
+ * argument, and updates the selection model.  Does nothing if the new menu is
+ * the same as the old one.  Overrides {@link goog.ui.MenuButton#setMenu}.
+ * @param {goog.ui.Menu} menu New menu to be attached to the menu button.
+ * @return {goog.ui.Menu|undefined} Previous menu (undefined if none).
+ * @override
+ */
+goog.ui.Select.prototype.setMenu = function(menu) {
+  // Call superclass implementation to replace the menu.
+  var oldMenu = goog.ui.Select.superClass_.setMenu.call(this, menu);
+
+  // Do nothing unless the new menu is different from the current one.
+  if (menu != oldMenu) {
+    // Clear the old selection model (if any).
+    if (this.selectionModel_) {
+      this.selectionModel_.clear();
+    }
+
+    // Initialize new selection model (unless the new menu is null).
+    if (menu) {
+      if (this.selectionModel_) {
+        menu.forEachChild(function(child, index) {
+          this.setCorrectAriaRole_(
+              /** @type {goog.ui.MenuItem|goog.ui.MenuSeparator} */ (child));
+          this.selectionModel_.addItem(child);
+        }, this);
+      } else {
+        this.createSelectionModel_(menu);
+      }
+    }
+  }
+
+  return oldMenu;
+};
+
+
+/**
+ * Returns the default caption to be shown when no option is selected.
+ * @return {goog.ui.ControlContent} Default caption.
+ */
+goog.ui.Select.prototype.getDefaultCaption = function() {
+  return this.defaultCaption_;
+};
+
+
+/**
+ * Sets the default caption to the given string or DOM structure.
+ * @param {goog.ui.ControlContent} caption Default caption to be shown
+ *    when no option is selected.
+ */
+goog.ui.Select.prototype.setDefaultCaption = function(caption) {
+  this.defaultCaption_ = caption;
+  this.updateCaption();
+};
+
+
+/**
+ * Adds a new menu item at the end of the menu.
+ * @param {goog.ui.Control} item Menu item to add to the menu.
+ * @override
+ */
+goog.ui.Select.prototype.addItem = function(item) {
+  this.setCorrectAriaRole_(
+      /** @type {goog.ui.MenuItem|goog.ui.MenuSeparator} */ (item));
+  goog.ui.Select.superClass_.addItem.call(this, item);
+
+  if (this.selectionModel_) {
+    this.selectionModel_.addItem(item);
+  } else {
+    this.createSelectionModel_(this.getMenu());
+  }
+};
+
+
+/**
+ * Adds a new menu item at a specific index in the menu.
+ * @param {goog.ui.MenuItem|goog.ui.MenuSeparator} item Menu item to add to the
+ *     menu.
+ * @param {number} index Index at which to insert the menu item.
+ * @override
+ */
+goog.ui.Select.prototype.addItemAt = function(item, index) {
+  this.setCorrectAriaRole_(
+      /** @type {goog.ui.MenuItem|goog.ui.MenuSeparator} */ (item));
+  goog.ui.Select.superClass_.addItemAt.call(this, item, index);
+
+  if (this.selectionModel_) {
+    this.selectionModel_.addItemAt(item, index);
+  } else {
+    this.createSelectionModel_(this.getMenu());
+  }
+};
+
+
+/**
+ * Removes an item from the menu and disposes it.
+ * @param {goog.ui.MenuItem|goog.ui.MenuSeparator} item The menu item to remove.
+ * @override
+ */
+goog.ui.Select.prototype.removeItem = function(item) {
+  goog.ui.Select.superClass_.removeItem.call(this, item);
+  if (this.selectionModel_) {
+    this.selectionModel_.removeItem(item);
+  }
+};
+
+
+/**
+ * Removes a menu item at a given index in the menu and disposes it.
+ * @param {number} index Index of item.
+ * @override
+ */
+goog.ui.Select.prototype.removeItemAt = function(index) {
+  goog.ui.Select.superClass_.removeItemAt.call(this, index);
+  if (this.selectionModel_) {
+    this.selectionModel_.removeItemAt(index);
+  }
+};
+
+
+/**
+ * Selects the specified option (assumed to be in the select menu), and
+ * deselects the previously selected option, if any.  A null argument clears
+ * the selection.
+ * @param {goog.ui.MenuItem} item Option to be selected (null to clear
+ *     the selection).
+ */
+goog.ui.Select.prototype.setSelectedItem = function(item) {
+  if (this.selectionModel_) {
+    var prevItem = this.getSelectedItem();
+    this.selectionModel_.setSelectedItem(item);
+
+    if (item != prevItem) {
+      this.dispatchEvent(goog.ui.Component.EventType.CHANGE);
+    }
+  }
+};
+
+
+/**
+ * Selects the option at the specified index, or clears the selection if the
+ * index is out of bounds.
+ * @param {number} index Index of the option to be selected.
+ */
+goog.ui.Select.prototype.setSelectedIndex = function(index) {
+  if (this.selectionModel_) {
+    this.setSelectedItem(/** @type {goog.ui.MenuItem} */
+        (this.selectionModel_.getItemAt(index)));
+  }
+};
+
+
+/**
+ * Selects the first option found with an associated value equal to the
+ * argument, or clears the selection if no such option is found.  A null
+ * argument also clears the selection.  Overrides {@link
+ * goog.ui.Button#setValue}.
+ * @param {*} value Value of the option to be selected (null to clear
+ *     the selection).
+ * @override
+ */
+goog.ui.Select.prototype.setValue = function(value) {
+  if (goog.isDefAndNotNull(value) && this.selectionModel_) {
+    for (var i = 0, item; item = this.selectionModel_.getItemAt(i); i++) {
+      if (item && typeof item.getValue == 'function' &&
+          item.getValue() == value) {
+        this.setSelectedItem(/** @type {goog.ui.MenuItem} */ (item));
+        return;
+      }
+    }
+  }
+
+  this.setSelectedItem(null);
+};
+
+
+/**
+ * Returns the currently selected option.
+ * @return {goog.ui.MenuItem} The currently selected option (null if none).
+ */
+goog.ui.Select.prototype.getSelectedItem = function() {
+  return this.selectionModel_ ?
+      /** @type {goog.ui.MenuItem} */ (this.selectionModel_.getSelectedItem()) :
+      null;
+};
+
+
+/**
+ * Returns the index of the currently selected option.
+ * @return {number} 0-based index of the currently selected option (-1 if none).
+ */
+goog.ui.Select.prototype.getSelectedIndex = function() {
+  return this.selectionModel_ ? this.selectionModel_.getSelectedIndex() : -1;
+};
+
+
+/**
+ * @return {goog.ui.SelectionModel} The selection model.
+ * @protected
+ */
+goog.ui.Select.prototype.getSelectionModel = function() {
+  return this.selectionModel_;
+};
+
+
+/**
+ * Creates a new selection model and sets up an event listener to handle
+ * {@link goog.events.EventType.SELECT} events dispatched by it.
+ * @param {goog.ui.Component=} opt_component If provided, will add the
+ *     component's children as items to the selection model.
+ * @private
+ */
+goog.ui.Select.prototype.createSelectionModel_ = function(opt_component) {
+  this.selectionModel_ = new goog.ui.SelectionModel();
+  if (opt_component) {
+    opt_component.forEachChild(function(child, index) {
+      this.setCorrectAriaRole_(
+          /** @type {goog.ui.MenuItem|goog.ui.MenuSeparator} */ (child));
+      this.selectionModel_.addItem(child);
+    }, this);
+  }
+  this.listenToSelectionModelEvents_();
+};
+
+
+/**
+ * Subscribes to events dispatched by the selection model.
+ * @private
+ */
+goog.ui.Select.prototype.listenToSelectionModelEvents_ = function() {
+  if (this.selectionModel_) {
+    this.getHandler().listen(this.selectionModel_, goog.events.EventType.SELECT,
+        this.handleSelectionChange);
+  }
+};
+
+
+/**
+ * Updates the caption to be shown in the select button.  If no option is
+ * selected and a default caption is set, sets the caption to the default
+ * caption; otherwise to the empty string.
+ * @protected
+ */
+goog.ui.Select.prototype.updateCaption = function() {
+  var item = this.getSelectedItem();
+  this.setContent(item ? item.getCaption() : this.defaultCaption_);
+};
+
+
+/**
+ * Sets the correct ARIA role for the menu item or separator.
+ * @param {goog.ui.MenuItem|goog.ui.MenuSeparator} item The item to set.
+ * @private
+ */
+goog.ui.Select.prototype.setCorrectAriaRole_ = function(item) {
+  item.setPreferredAriaRole(item instanceof goog.ui.MenuItem ?
+      goog.dom.a11y.Role.OPTION : goog.dom.a11y.Role.SEPARATOR);
+};
+
+
+/**
+ * Opens or closes the menu.  Overrides {@link goog.ui.MenuButton#setOpen} by
+ * highlighting the currently selected option on open.
+ * @param {boolean} open Whether to open or close the menu.
+ * @param {goog.events.Event=} opt_e Mousedown event that caused the menu to
+ *     be opened.
+ * @override
+ */
+goog.ui.Select.prototype.setOpen = function(open, opt_e) {
+  goog.ui.Select.superClass_.setOpen.call(this, open, opt_e);
+
+  if (this.isOpen()) {
+    this.getMenu().setHighlightedIndex(this.getSelectedIndex());
+  }
+};
+
+
+// Register a decorator factory function for goog.ui.Selects.
+goog.ui.registry.setDecoratorByClassName(
+    goog.getCssName('goog-select'), function() {
+      // Select defaults to using MenuButtonRenderer, since it shares its L&F.
+      return new goog.ui.Select(null);
+    });
+// Copyright 2008 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview A toolbar menu button renderer.
+ *
+ * @author attila@google.com (Attila Bodis)
+ */
+
+goog.provide('goog.ui.ToolbarMenuButtonRenderer');
+
+goog.require('goog.ui.MenuButtonRenderer');
+
+
+
+/**
+ * Toolbar-specific renderer for {@link goog.ui.MenuButton}s, based on {@link
+ * goog.ui.MenuButtonRenderer}.
+ * @constructor
+ * @extends {goog.ui.MenuButtonRenderer}
+ */
+goog.ui.ToolbarMenuButtonRenderer = function() {
+  goog.ui.MenuButtonRenderer.call(this);
+};
+goog.inherits(goog.ui.ToolbarMenuButtonRenderer, goog.ui.MenuButtonRenderer);
+goog.addSingletonGetter(goog.ui.ToolbarMenuButtonRenderer);
+
+
+/**
+ * Default CSS class to be applied to the root element of menu buttons rendered
+ * by this renderer.
+ * @type {string}
+ */
+goog.ui.ToolbarMenuButtonRenderer.CSS_CLASS =
+    goog.getCssName('goog-toolbar-menu-button');
+
+
+/**
+ * Returns the CSS class to be applied to the root element of menu buttons
+ * rendered using this renderer.
+ * @return {string} Renderer-specific CSS class.
+ * @override
+ */
+goog.ui.ToolbarMenuButtonRenderer.prototype.getCssClass = function() {
+  return goog.ui.ToolbarMenuButtonRenderer.CSS_CLASS;
+};
+// Copyright 2008 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview A toolbar select control.
+ *
+ * @author attila@google.com (Attila Bodis)
+ * @author ssaviano@google.com (Steven Saviano)
+ */
+
+goog.provide('goog.ui.ToolbarSelect');
+
+goog.require('goog.ui.ControlContent');
+goog.require('goog.ui.Select');
+goog.require('goog.ui.ToolbarMenuButtonRenderer');
+goog.require('goog.ui.registry');
+
+
+
+/**
+ * A select control for a toolbar.
+ *
+ * @param {goog.ui.ControlContent} caption Default caption or existing DOM
+ *     structure to display as the button's caption when nothing is selected.
+ * @param {goog.ui.Menu=} opt_menu Menu containing selection options.
+ * @param {goog.ui.MenuButtonRenderer=} opt_renderer Renderer used to
+ *     render or decorate the control; defaults to
+ *     {@link goog.ui.ToolbarMenuButtonRenderer}.
+ * @param {goog.dom.DomHelper=} opt_domHelper Optional DOM hepler, used for
+ *     document interaction.
+ * @constructor
+ * @extends {goog.ui.Select}
+ */
+goog.ui.ToolbarSelect = function(
+    caption, opt_menu, opt_renderer, opt_domHelper) {
+  goog.ui.Select.call(this, caption, opt_menu, opt_renderer ||
+      goog.ui.ToolbarMenuButtonRenderer.getInstance(), opt_domHelper);
+};
+goog.inherits(goog.ui.ToolbarSelect, goog.ui.Select);
+
+
+// Registers a decorator factory function for select controls used in toolbars.
+goog.ui.registry.setDecoratorByClassName(goog.getCssName('goog-toolbar-select'),
+    function() {
+      return new goog.ui.ToolbarSelect(null);
+    });
+// Copyright 2006 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview Drag Utilities.
+ *
+ * Provides extensible functionality for drag & drop behaviour.
+ *
+ * @see ../demos/drag.html
+ * @see ../demos/dragger.html
+ */
+
+
+goog.provide('goog.fx.DragEvent');
+goog.provide('goog.fx.Dragger');
+goog.provide('goog.fx.Dragger.EventType');
+
+goog.require('goog.dom');
+goog.require('goog.events');
+goog.require('goog.events.BrowserEvent.MouseButton');
+goog.require('goog.events.Event');
+goog.require('goog.events.EventHandler');
+goog.require('goog.events.EventTarget');
+goog.require('goog.events.EventType');
+goog.require('goog.math.Coordinate');
+goog.require('goog.math.Rect');
+goog.require('goog.style');
+goog.require('goog.style.bidi');
+goog.require('goog.userAgent');
+
+
+
+/**
+ * A class that allows mouse or touch-based dragging (moving) of an element
+ *
+ * @param {Element} target The element that will be dragged.
+ * @param {Element=} opt_handle An optional handle to control the drag, if null
+ *     the target is used.
+ * @param {goog.math.Rect=} opt_limits Object containing left, top, width,
+ *     and height.
+ *
+ * @extends {goog.events.EventTarget}
+ * @constructor
+ */
+goog.fx.Dragger = function(target, opt_handle, opt_limits) {
+  goog.events.EventTarget.call(this);
+  this.target = target;
+  this.handle = opt_handle || target;
+  this.limits = opt_limits || new goog.math.Rect(NaN, NaN, NaN, NaN);
+
+  this.document_ = goog.dom.getOwnerDocument(target);
+  this.eventHandler_ = new goog.events.EventHandler(this);
+
+  // Add listener. Do not use the event handler here since the event handler is
+  // used for listeners added and removed during the drag operation.
+  goog.events.listen(this.handle,
+      [goog.events.EventType.TOUCHSTART, goog.events.EventType.MOUSEDOWN],
+      this.startDrag, false, this);
+};
+goog.inherits(goog.fx.Dragger, goog.events.EventTarget);
+
+
+/**
+ * Whether setCapture is supported by the browser.
+ * @type {boolean}
+ * @private
+ */
+goog.fx.Dragger.HAS_SET_CAPTURE_ =
+    // IE and Gecko after 1.9.3 has setCapture
+    // WebKit does not yet: https://bugs.webkit.org/show_bug.cgi?id=27330
+    goog.userAgent.IE ||
+    goog.userAgent.GECKO && goog.userAgent.isVersion('1.9.3');
+
+
+/**
+ * Constants for event names.
+ * @enum {string}
+ */
+goog.fx.Dragger.EventType = {
+  // The drag action was canceled before the START event. Possible reasons:
+  // disabled dragger, dragging with the right mouse button or releasing the
+  // button before reaching the hysteresis distance.
+  EARLY_CANCEL: 'earlycancel',
+  START: 'start',
+  BEFOREDRAG: 'beforedrag',
+  DRAG: 'drag',
+  END: 'end'
+};
+
+
+/**
+ * Reference to drag target element.
+ * @type {Element}
+ */
+goog.fx.Dragger.prototype.target;
+
+
+/**
+ * Reference to the handler that initiates the drag.
+ * @type {Element}
+ */
+goog.fx.Dragger.prototype.handle;
+
+
+/**
+ * Object representing the limits of the drag region.
+ * @type {goog.math.Rect}
+ */
+goog.fx.Dragger.prototype.limits;
+
+
+/**
+ * Whether the element is rendered right-to-left. We initialize this lazily.
+ * @type {boolean|undefined}}
+ * @private
+ */
+goog.fx.Dragger.prototype.rightToLeft_;
+
+
+/**
+ * Current x position of mouse or touch relative to viewport.
+ * @type {number}
+ */
+goog.fx.Dragger.prototype.clientX = 0;
+
+
+/**
+ * Current y position of mouse or touch relative to viewport.
+ * @type {number}
+ */
+goog.fx.Dragger.prototype.clientY = 0;
+
+
+/**
+ * Current x position of mouse or touch relative to screen. Deprecated because
+ * it doesn't take into affect zoom level or pixel density.
+ * @type {number}
+ * @deprecated Consider switching to clientX instead.
+ */
+goog.fx.Dragger.prototype.screenX = 0;
+
+
+/**
+ * Current y position of mouse or touch relative to screen. Deprecated because
+ * it doesn't take into affect zoom level or pixel density.
+ * @type {number}
+ * @deprecated Consider switching to clientY instead.
+ */
+goog.fx.Dragger.prototype.screenY = 0;
+
+
+/**
+ * The x position where the first mousedown or touchstart occurred.
+ * @type {number}
+ */
+goog.fx.Dragger.prototype.startX = 0;
+
+
+/**
+ * The y position where the first mousedown or touchstart occurred.
+ * @type {number}
+ */
+goog.fx.Dragger.prototype.startY = 0;
+
+
+/**
+ * Current x position of drag relative to target's parent.
+ * @type {number}
+ */
+goog.fx.Dragger.prototype.deltaX = 0;
+
+
+/**
+ * Current y position of drag relative to target's parent.
+ * @type {number}
+ */
+goog.fx.Dragger.prototype.deltaY = 0;
+
+
+/**
+ * The current page scroll value.
+ * @type {goog.math.Coordinate}
+ */
+goog.fx.Dragger.prototype.pageScroll;
+
+
+/**
+ * Whether dragging is currently enabled.
+ * @type {boolean}
+ * @private
+ */
+goog.fx.Dragger.prototype.enabled_ = true;
+
+
+/**
+ * Whether object is currently being dragged.
+ * @type {boolean}
+ * @private
+ */
+goog.fx.Dragger.prototype.dragging_ = false;
+
+
+/**
+ * The amount of distance, in pixels, after which a mousedown or touchstart is
+ * considered a drag.
+ * @type {number}
+ * @private
+ */
+goog.fx.Dragger.prototype.hysteresisDistanceSquared_ = 0;
+
+
+/**
+ * Timestamp of when the mousedown or touchstart occurred.
+ * @type {number}
+ * @private
+ */
+goog.fx.Dragger.prototype.mouseDownTime_ = 0;
+
+
+/**
+ * Reference to a document object to use for the events.
+ * @type {Document}
+ * @private
+ */
+goog.fx.Dragger.prototype.document_;
+
+
+/**
+ * Event handler used to simplify managing events.
+ * @type {goog.events.EventHandler}
+ * @private
+ */
+goog.fx.Dragger.prototype.eventHandler_;
+
+
+/**
+ * The SCROLL event target used to make drag element follow scrolling.
+ * @type {EventTarget}
+ * @private
+ */
+goog.fx.Dragger.prototype.scrollTarget_;
+
+
+/**
+ * Whether IE drag events cancelling is on.
+ * @type {boolean}
+ * @private
+ */
+goog.fx.Dragger.prototype.ieDragStartCancellingOn_ = false;
+
+
+/**
+ * Whether the dragger implements the changes described in http://b/6324964,
+ * making it truly RTL.  This is a temporary flag to allow clients to transition
+ * to the new behavior at their convenience.  At some point it will be the
+ * default.
+ * @type {boolean}
+ * @private
+ */
+goog.fx.Dragger.prototype.useRightPositioningForRtl_ = false;
+
+
+/**
+ * Turns on/off true RTL behavior.  This should be called immediately after
+ * construction.  This is a temporary flag to allow clients to transition
+ * to the new component at their convenience.  At some point true will be the
+ * default.
+ * @param {boolean} useRightPositioningForRtl True if "right" should be used for
+ *     positioning, false if "left" should be used for positioning.
+ */
+goog.fx.Dragger.prototype.enableRightPositioningForRtl =
+    function(useRightPositioningForRtl) {
+  this.useRightPositioningForRtl_ = useRightPositioningForRtl;
+};
+
+
+/**
+ * Returns the event handler, intended for subclass use.
+ * @return {goog.events.EventHandler} The event handler.
+ */
+goog.fx.Dragger.prototype.getHandler = function() {
+  return this.eventHandler_;
+};
+
+
+/**
+ * Sets (or reset) the Drag limits after a Dragger is created.
+ * @param {goog.math.Rect?} limits Object containing left, top, width,
+ *     height for new Dragger limits. If target is right-to-left and
+ *     enableRightPositioningForRtl(true) is called, then rect is interpreted as
+ *     right, top, width, and height.
+ */
+goog.fx.Dragger.prototype.setLimits = function(limits) {
+  this.limits = limits || new goog.math.Rect(NaN, NaN, NaN, NaN);
+};
+
+
+/**
+ * Sets the distance the user has to drag the element before a drag operation is
+ * started.
+ * @param {number} distance The number of pixels after which a mousedown and
+ *     move is considered a drag.
+ */
+goog.fx.Dragger.prototype.setHysteresis = function(distance) {
+  this.hysteresisDistanceSquared_ = Math.pow(distance, 2);
+};
+
+
+/**
+ * Gets the distance the user has to drag the element before a drag operation is
+ * started.
+ * @return {number} distance The number of pixels after which a mousedown and
+ *     move is considered a drag.
+ */
+goog.fx.Dragger.prototype.getHysteresis = function() {
+  return Math.sqrt(this.hysteresisDistanceSquared_);
+};
+
+
+/**
+ * Sets the SCROLL event target to make drag element follow scrolling.
+ *
+ * @param {EventTarget} scrollTarget The event target that dispatches SCROLL
+ *     events.
+ */
+goog.fx.Dragger.prototype.setScrollTarget = function(scrollTarget) {
+  this.scrollTarget_ = scrollTarget;
+};
+
+
+/**
+ * Enables cancelling of built-in IE drag events.
+ * @param {boolean} cancelIeDragStart Whether to enable cancelling of IE
+ *     dragstart event.
+ */
+goog.fx.Dragger.prototype.setCancelIeDragStart = function(cancelIeDragStart) {
+  this.ieDragStartCancellingOn_ = cancelIeDragStart;
+};
+
+
+/**
+ * @return {boolean} Whether the dragger is enabled.
+ */
+goog.fx.Dragger.prototype.getEnabled = function() {
+  return this.enabled_;
+};
+
+
+/**
+ * Set whether dragger is enabled
+ * @param {boolean} enabled Whether dragger is enabled.
+ */
+goog.fx.Dragger.prototype.setEnabled = function(enabled) {
+  this.enabled_ = enabled;
+};
+
+
+/** @override */
+goog.fx.Dragger.prototype.disposeInternal = function() {
+  goog.fx.Dragger.superClass_.disposeInternal.call(this);
+  goog.events.unlisten(this.handle,
+      [goog.events.EventType.TOUCHSTART, goog.events.EventType.MOUSEDOWN],
+      this.startDrag, false, this);
+  this.cleanUpAfterDragging_();
+
+  this.target = null;
+  this.handle = null;
+  this.eventHandler_ = null;
+};
+
+
+/**
+ * Whether the DOM element being manipulated is rendered right-to-left.
+ * @return {boolean} True if the DOM element is rendered right-to-left, false
+ *     otherwise.
+ * @private
+ */
+goog.fx.Dragger.prototype.isRightToLeft_ = function() {
+  if (!goog.isDef(this.rightToLeft_)) {
+    this.rightToLeft_ = goog.style.isRightToLeft(this.target);
+  }
+  return this.rightToLeft_;
+};
+
+
+/**
+ * Event handler that is used to start the drag
+ * @param {goog.events.BrowserEvent} e Event object.
+ */
+goog.fx.Dragger.prototype.startDrag = function(e) {
+  var isMouseDown = e.type == goog.events.EventType.MOUSEDOWN;
+
+  // Dragger.startDrag() can be called by AbstractDragDrop with a mousemove
+  // event and IE does not report pressed mouse buttons on mousemove. Also,
+  // it does not make sense to check for the button if the user is already
+  // dragging.
+
+  if (this.enabled_ && !this.dragging_ &&
+      (!isMouseDown || e.isMouseActionButton())) {
+    this.maybeReinitTouchEvent_(e);
+    if (this.hysteresisDistanceSquared_ == 0) {
+      if (this.fireDragStart_(e)) {
+        this.dragging_ = true;
+        e.preventDefault();
+      } else {
+        // If the start drag is cancelled, don't setup for a drag.
+        return;
+      }
+    } else {
+      // Need to preventDefault for hysteresis to prevent page getting selected.
+      e.preventDefault();
+    }
+    this.setupDragHandlers();
+
+    this.clientX = this.startX = e.clientX;
+    this.clientY = this.startY = e.clientY;
+    this.screenX = e.screenX;
+    this.screenY = e.screenY;
+    this.deltaX = this.useRightPositioningForRtl_ ?
+        goog.style.bidi.getOffsetStart(this.target) : this.target.offsetLeft;
+    this.deltaY = this.target.offsetTop;
+    this.pageScroll = goog.dom.getDomHelper(this.document_).getDocumentScroll();
+
+    this.mouseDownTime_ = goog.now();
+  } else {
+    this.dispatchEvent(goog.fx.Dragger.EventType.EARLY_CANCEL);
+  }
+};
+
+
+/**
+ * Sets up event handlers when dragging starts.
+ * @protected
+ */
+goog.fx.Dragger.prototype.setupDragHandlers = function() {
+  var doc = this.document_;
+  var docEl = doc.documentElement;
+  // Use bubbling when we have setCapture since we got reports that IE has
+  // problems with the capturing events in combination with setCapture.
+  var useCapture = !goog.fx.Dragger.HAS_SET_CAPTURE_;
+
+  this.eventHandler_.listen(doc,
+      [goog.events.EventType.TOUCHMOVE, goog.events.EventType.MOUSEMOVE],
+      this.handleMove_, useCapture);
+  this.eventHandler_.listen(doc,
+      [goog.events.EventType.TOUCHEND, goog.events.EventType.MOUSEUP],
+      this.endDrag, useCapture);
+
+  if (goog.fx.Dragger.HAS_SET_CAPTURE_) {
+    docEl.setCapture(false);
+    this.eventHandler_.listen(docEl,
+                              goog.events.EventType.LOSECAPTURE,
+                              this.endDrag);
+  } else {
+    // Make sure we stop the dragging if the window loses focus.
+    // Don't use capture in this listener because we only want to end the drag
+    // if the actual window loses focus. Since blur events do not bubble we use
+    // a bubbling listener on the window.
+    this.eventHandler_.listen(goog.dom.getWindow(doc),
+                              goog.events.EventType.BLUR,
+                              this.endDrag);
+  }
+
+  if (goog.userAgent.IE && this.ieDragStartCancellingOn_) {
+    // Cancel IE's 'ondragstart' event.
+    this.eventHandler_.listen(doc, goog.events.EventType.DRAGSTART,
+                              goog.events.Event.preventDefault);
+  }
+
+  if (this.scrollTarget_) {
+    this.eventHandler_.listen(this.scrollTarget_, goog.events.EventType.SCROLL,
+                              this.onScroll_, useCapture);
+  }
+};
+
+
+/**
+ * Fires a goog.fx.Dragger.EventType.START event.
+ * @param {goog.events.BrowserEvent} e Browser event that triggered the drag.
+ * @return {boolean} False iff preventDefault was called on the DragEvent.
+ * @private
+ */
+goog.fx.Dragger.prototype.fireDragStart_ = function(e) {
+  return this.dispatchEvent(new goog.fx.DragEvent(
+      goog.fx.Dragger.EventType.START, this, e.clientX, e.clientY, e));
+};
+
+
+/**
+ * Unregisters the event handlers that are only active during dragging, and
+ * releases mouse capture.
+ * @private
+ */
+goog.fx.Dragger.prototype.cleanUpAfterDragging_ = function() {
+  this.eventHandler_.removeAll();
+  if (goog.fx.Dragger.HAS_SET_CAPTURE_) {
+    this.document_.releaseCapture();
+  }
+};
+
+
+/**
+ * Event handler that is used to end the drag.
+ * @param {goog.events.BrowserEvent} e Event object.
+ * @param {boolean=} opt_dragCanceled Whether the drag has been canceled.
+ */
+goog.fx.Dragger.prototype.endDrag = function(e, opt_dragCanceled) {
+  this.cleanUpAfterDragging_();
+
+  if (this.dragging_) {
+    this.maybeReinitTouchEvent_(e);
+    this.dragging_ = false;
+
+    var x = this.limitX(this.deltaX);
+    var y = this.limitY(this.deltaY);
+    var dragCanceled = opt_dragCanceled ||
+        e.type == goog.events.EventType.TOUCHCANCEL;
+    this.dispatchEvent(new goog.fx.DragEvent(
+        goog.fx.Dragger.EventType.END, this, e.clientX, e.clientY, e, x, y,
+        dragCanceled));
+  } else {
+    this.dispatchEvent(goog.fx.Dragger.EventType.EARLY_CANCEL);
+  }
+
+  // Call preventDefault to prevent mouseup from being raised if this is a
+  // touchend event.
+  if (e.type == goog.events.EventType.TOUCHEND ||
+      e.type == goog.events.EventType.TOUCHCANCEL) {
+    e.preventDefault();
+  }
+};
+
+
+/**
+ * Event handler that is used to end the drag by cancelling it.
+ * @param {goog.events.BrowserEvent} e Event object.
+ */
+goog.fx.Dragger.prototype.endDragCancel = function(e) {
+  this.endDrag(e, true);
+};
+
+
+/**
+ * Re-initializes the event with the first target touch event or, in the case
+ * of a stop event, the last changed touch.
+ * @param {goog.events.BrowserEvent} e A TOUCH... event.
+ * @private
+ */
+goog.fx.Dragger.prototype.maybeReinitTouchEvent_ = function(e) {
+  var type = e.type;
+
+  if (type == goog.events.EventType.TOUCHSTART ||
+      type == goog.events.EventType.TOUCHMOVE) {
+    e.init(e.getBrowserEvent().targetTouches[0], e.currentTarget);
+  } else if (type == goog.events.EventType.TOUCHEND ||
+             type == goog.events.EventType.TOUCHCANCEL) {
+    e.init(e.getBrowserEvent().changedTouches[0], e.currentTarget);
+  }
+};
+
+
+/**
+ * Event handler that is used on mouse / touch move to update the drag
+ * @param {goog.events.BrowserEvent} e Event object.
+ * @private
+ */
+goog.fx.Dragger.prototype.handleMove_ = function(e) {
+  if (this.enabled_) {
+    this.maybeReinitTouchEvent_(e);
+    // dx in right-to-left cases is relative to the right.
+    var sign = this.useRightPositioningForRtl_ &&
+        this.isRightToLeft_() ? -1 : 1;
+    var dx = sign * (e.clientX - this.clientX);
+    var dy = e.clientY - this.clientY;
+    this.clientX = e.clientX;
+    this.clientY = e.clientY;
+    this.screenX = e.screenX;
+    this.screenY = e.screenY;
+
+    if (!this.dragging_) {
+      var diffX = this.startX - this.clientX;
+      var diffY = this.startY - this.clientY;
+      var distance = diffX * diffX + diffY * diffY;
+      if (distance > this.hysteresisDistanceSquared_) {
+        if (this.fireDragStart_(e)) {
+          this.dragging_ = true;
+        } else {
+          // DragListGroup disposes of the dragger if BEFOREDRAGSTART is
+          // canceled.
+          if (!this.isDisposed()) {
+            this.endDrag(e);
+          }
+          return;
+        }
+      }
+    }
+
+    var pos = this.calculatePosition_(dx, dy);
+    var x = pos.x;
+    var y = pos.y;
+
+    if (this.dragging_) {
+
+      var rv = this.dispatchEvent(new goog.fx.DragEvent(
+          goog.fx.Dragger.EventType.BEFOREDRAG, this, e.clientX, e.clientY,
+          e, x, y));
+
+      // Only do the defaultAction and dispatch drag event if predrag didn't
+      // prevent default
+      if (rv) {
+        this.doDrag(e, x, y, false);
+        e.preventDefault();
+      }
+    }
+  }
+};
+
+
+/**
+ * Calculates the drag position.
+ *
+ * @param {number} dx The horizontal movement delta.
+ * @param {number} dy The vertical movement delta.
+ * @return {goog.math.Coordinate} The newly calculated drag element position.
+ * @private
+ */
+goog.fx.Dragger.prototype.calculatePosition_ = function(dx, dy) {
+  // Update the position for any change in body scrolling
+  var pageScroll = goog.dom.getDomHelper(this.document_).getDocumentScroll();
+  dx += pageScroll.x - this.pageScroll.x;
+  dy += pageScroll.y - this.pageScroll.y;
+  this.pageScroll = pageScroll;
+
+  this.deltaX += dx;
+  this.deltaY += dy;
+
+  var x = this.limitX(this.deltaX);
+  var y = this.limitY(this.deltaY);
+  return new goog.math.Coordinate(x, y);
+};
+
+
+/**
+ * Event handler for scroll target scrolling.
+ * @param {goog.events.BrowserEvent} e The event.
+ * @private
+ */
+goog.fx.Dragger.prototype.onScroll_ = function(e) {
+  var pos = this.calculatePosition_(0, 0);
+  e.clientX = this.clientX;
+  e.clientY = this.clientY;
+  this.doDrag(e, pos.x, pos.y, true);
+};
+
+
+/**
+ * @param {goog.events.BrowserEvent} e The closure object
+ *     representing the browser event that caused a drag event.
+ * @param {number} x The new horizontal position for the drag element.
+ * @param {number} y The new vertical position for the drag element.
+ * @param {boolean} dragFromScroll Whether dragging was caused by scrolling
+ *     the associated scroll target.
+ * @protected
+ */
+goog.fx.Dragger.prototype.doDrag = function(e, x, y, dragFromScroll) {
+  this.defaultAction(x, y);
+  this.dispatchEvent(new goog.fx.DragEvent(
+      goog.fx.Dragger.EventType.DRAG, this, e.clientX, e.clientY, e, x, y));
+};
+
+
+/**
+ * Returns the 'real' x after limits are applied (allows for some
+ * limits to be undefined).
+ * @param {number} x X-coordinate to limit.
+ * @return {number} The 'real' X-coordinate after limits are applied.
+ */
+goog.fx.Dragger.prototype.limitX = function(x) {
+  var rect = this.limits;
+  var left = !isNaN(rect.left) ? rect.left : null;
+  var width = !isNaN(rect.width) ? rect.width : 0;
+  var maxX = left != null ? left + width : Infinity;
+  var minX = left != null ? left : -Infinity;
+  return Math.min(maxX, Math.max(minX, x));
+};
+
+
+/**
+ * Returns the 'real' y after limits are applied (allows for some
+ * limits to be undefined).
+ * @param {number} y Y-coordinate to limit.
+ * @return {number} The 'real' Y-coordinate after limits are applied.
+ */
+goog.fx.Dragger.prototype.limitY = function(y) {
+  var rect = this.limits;
+  var top = !isNaN(rect.top) ? rect.top : null;
+  var height = !isNaN(rect.height) ? rect.height : 0;
+  var maxY = top != null ? top + height : Infinity;
+  var minY = top != null ? top : -Infinity;
+  return Math.min(maxY, Math.max(minY, y));
+};
+
+
+/**
+ * Overridable function for handling the default action of the drag behaviour.
+ * Normally this is simply moving the element to x,y though in some cases it
+ * might be used to resize the layer.  This is basically a shortcut to
+ * implementing a default ondrag event handler.
+ * @param {number} x X-coordinate for target element. In right-to-left, x this
+ *     is the number of pixels the target should be moved to from the right.
+ * @param {number} y Y-coordinate for target element.
+ */
+goog.fx.Dragger.prototype.defaultAction = function(x, y) {
+  if (this.useRightPositioningForRtl_ && this.isRightToLeft_()) {
+    this.target.style.right = x + 'px';
+  } else {
+    this.target.style.left = x + 'px';
+  }
+  this.target.style.top = y + 'px';
+};
+
+
+/**
+ * @return {boolean} Whether the dragger is currently in the midst of a drag.
+ */
+goog.fx.Dragger.prototype.isDragging = function() {
+  return this.dragging_;
+};
+
+
+
+/**
+ * Object representing a drag event
+ * @param {string} type Event type.
+ * @param {goog.fx.Dragger} dragobj Drag object initiating event.
+ * @param {number} clientX X-coordinate relative to the viewport.
+ * @param {number} clientY Y-coordinate relative to the viewport.
+ * @param {goog.events.BrowserEvent} browserEvent The closure object
+ *   representing the browser event that caused this drag event.
+ * @param {number=} opt_actX Optional actual x for drag if it has been limited.
+ * @param {number=} opt_actY Optional actual y for drag if it has been limited.
+ * @param {boolean=} opt_dragCanceled Whether the drag has been canceled.
+ * @constructor
+ * @extends {goog.events.Event}
+ */
+goog.fx.DragEvent = function(type, dragobj, clientX, clientY, browserEvent,
+                             opt_actX, opt_actY, opt_dragCanceled) {
+  goog.events.Event.call(this, type);
+
+  /**
+   * X-coordinate relative to the viewport
+   * @type {number}
+   */
+  this.clientX = clientX;
+
+  /**
+   * Y-coordinate relative to the viewport
+   * @type {number}
+   */
+  this.clientY = clientY;
+
+  /**
+   * The closure object representing the browser event that caused this drag
+   * event.
+   * @type {goog.events.BrowserEvent}
+   */
+  this.browserEvent = browserEvent;
+
+  /**
+   * The real x-position of the drag if it has been limited
+   * @type {number}
+   */
+  this.left = goog.isDef(opt_actX) ? opt_actX : dragobj.deltaX;
+
+  /**
+   * The real y-position of the drag if it has been limited
+   * @type {number}
+   */
+  this.top = goog.isDef(opt_actY) ? opt_actY : dragobj.deltaY;
+
+  /**
+   * Reference to the drag object for this event
+   * @type {goog.fx.Dragger}
+   */
+  this.dragger = dragobj;
+
+  /**
+   * Whether drag was canceled with this event. Used to differentiate between
+   * a legitimate drag END that can result in an action and a drag END which is
+   * a result of a drag cancelation. For now it can happen 1) with drag END
+   * event on FireFox when user drags the mouse out of the window, 2) with
+   * drag END event on IE7 which is generated on MOUSEMOVE event when user
+   * moves the mouse into the document after the mouse button has been
+   * released, 3) when TOUCHCANCEL is raised instead of TOUCHEND (on touch
+   * events).
+   * @type {boolean}
+   */
+  this.dragCanceled = !!opt_dragCanceled;
+};
+goog.inherits(goog.fx.DragEvent, goog.events.Event);
+// Copyright 2007 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview  Class for splitting two areas with draggable control for
+ * changing size.
+ *
+ * The DOM that is created (or that can be decorated) looks like this:
+ * <div class='goog-splitpane'>
+ *   <div class='goog-splitpane-first-container'></div>
+ *   <div class='goog-splitpane-second-container'></div>
+ *   <div class='goog-splitpane-handle'></div>
+ * </div>
+ *
+ * The content to be split goes in the first and second DIVs, the third one
+ * is for managing (and styling) the splitter handle.
+ *
+ * @see ../demos/splitpane.html
+ */
+
+
+goog.provide('goog.ui.SplitPane');
+goog.provide('goog.ui.SplitPane.Orientation');
+
+goog.require('goog.dom');
+goog.require('goog.dom.classes');
+goog.require('goog.events.EventType');
+goog.require('goog.fx.Dragger');
+goog.require('goog.fx.Dragger.EventType');
+goog.require('goog.math.Rect');
+goog.require('goog.math.Size');
+goog.require('goog.style');
+goog.require('goog.ui.Component');
+goog.require('goog.ui.Component.EventType');
+goog.require('goog.userAgent');
+
+
+
+/**
+ * A left/right up/down Container SplitPane.
+ * Create SplitPane with two goog.ui.Component opjects to split.
+ * TODO(user): Support minimum splitpane size.
+ * TODO(user): Allow component change/orientation after init.
+ * TODO(user): Support hiding either side of handle (plus handle).
+ * TODO(user): Look at setBorderBoxSize fixes and revist borderwidth code.
+ *
+ * @param {goog.ui.Component} firstComponent Left or Top component.
+ * @param {goog.ui.Component} secondComponent Right or Bottom component.
+ * @param {goog.ui.SplitPane.Orientation} orientation SplitPane orientation.
+ * @param {goog.dom.DomHelper=} opt_domHelper Optional DOM helper.
+ * @extends {goog.ui.Component}
+ * @constructor
+ */
+goog.ui.SplitPane = function(firstComponent, secondComponent, orientation,
+    opt_domHelper) {
+  goog.ui.Component.call(this, opt_domHelper);
+
+  /**
+   * The orientation of the containers.
+   * @type {goog.ui.SplitPane.Orientation}
+   * @private
+   */
+  this.orientation_ = orientation;
+
+  /**
+   * The left/top component.
+   * @type {goog.ui.Component}
+   * @private
+   */
+  this.firstComponent_ = firstComponent;
+  this.addChild(firstComponent);
+
+  /**
+   * The right/bottom component.
+   * @type {goog.ui.Component}
+   * @private
+   */
+  this.secondComponent_ = secondComponent;
+  this.addChild(secondComponent);
+};
+goog.inherits(goog.ui.SplitPane, goog.ui.Component);
+
+
+/**
+ * Events.
+ * @enum {string}
+ */
+goog.ui.SplitPane.EventType = {
+  /**
+   * Dispatched after handle drag end.
+   */
+  HANDLE_DRAG_END: 'handle_drag_end'
+};
+
+
+/**
+ * CSS class names for splitpane outer container.
+ * @type {string}
+ * @private
+ */
+goog.ui.SplitPane.CLASS_NAME_ = goog.getCssName('goog-splitpane');
+
+
+/**
+ * CSS class name for first splitpane container.
+ * @type {string}
+ * @private
+ */
+goog.ui.SplitPane.FIRST_CONTAINER_CLASS_NAME_ =
+    goog.getCssName('goog-splitpane-first-container');
+
+
+/**
+ * CSS class name for second splitpane container.
+ * @type {string}
+ * @private
+ */
+goog.ui.SplitPane.SECOND_CONTAINER_CLASS_NAME_ =
+    goog.getCssName('goog-splitpane-second-container');
+
+
+/**
+ * CSS class name for the splitpane handle.
+ * @type {string}
+ * @private
+ */
+goog.ui.SplitPane.HANDLE_CLASS_NAME_ = goog.getCssName('goog-splitpane-handle');
+
+
+/**
+ * CSS class name for the splitpane handle in horizontal orientation.
+ * @type {string}
+ * @private
+ */
+goog.ui.SplitPane.HANDLE_CLASS_NAME_HORIZONTAL_ =
+    goog.getCssName('goog-splitpane-handle-horizontal');
+
+
+/**
+ * CSS class name for the splitpane handle in horizontal orientation.
+ * @type {string}
+ * @private
+ */
+goog.ui.SplitPane.HANDLE_CLASS_NAME_VERTICAL_ =
+    goog.getCssName('goog-splitpane-handle-vertical');
+
+
+/**
+  * The dragger to move the drag handle.
+  * @type {goog.fx.Dragger?}
+  * @private
+  */
+goog.ui.SplitPane.prototype.splitDragger_ = null;
+
+
+/**
+ * The left/top component dom container.
+ * @type {Element}
+ * @private
+ */
+goog.ui.SplitPane.prototype.firstComponentContainer_ = null;
+
+
+/**
+ * The right/bottom component dom container.
+ * @type {Element}
+ * @private
+ */
+goog.ui.SplitPane.prototype.secondComponentContainer_ = null;
+
+
+/**
+ * The size (width or height) of the splitpane handle, default = 5.
+ * @type {number}
+ * @private
+ */
+goog.ui.SplitPane.prototype.handleSize_ = 5;
+
+
+/**
+ * The initial size (width or height) of the left or top component.
+ * @type {?number}
+ * @private
+ */
+goog.ui.SplitPane.prototype.initialSize_ = null;
+
+
+/**
+ * The saved size (width or height) of the left or top component on a
+ * double-click (snap).
+ * This needs to be saved so it can be restored after another double-click.
+ * @type {?number}
+ * @private
+ */
+goog.ui.SplitPane.prototype.savedSnapSize_ = null;
+
+
+/**
+ * The first component size, so we don't change it on a window resize.
+ * @type {?number}
+ * @private
+ */
+goog.ui.SplitPane.prototype.firstComponentSize_ = null;
+
+
+/**
+ * If we resize as they user moves the handle (default = true).
+ * @type {boolean}
+ * @private
+ */
+goog.ui.SplitPane.prototype.continuousResize_ = true;
+
+
+/**
+ * Iframe overlay to prevent iframes from grabbing events.
+ * @type {Element}
+ * @private
+ */
+goog.ui.SplitPane.prototype.iframeOverlay_ = null;
+
+
+/**
+ * Z indices for iframe overlay and splitter handle.
+ * @enum {number}
+ * @private
+ */
+goog.ui.SplitPane.IframeOverlayIndex_ = {
+  HIDDEN: -1,
+  OVERLAY: 1,
+  SPLITTER_HANDLE: 2
+};
+
+
+/**
+* Orientation values for the splitpane.
+* @enum {string}
+*/
+goog.ui.SplitPane.Orientation = {
+
+  /**
+   * Horizontal orientation means splitter moves right-left.
+   */
+  HORIZONTAL: 'horizontal',
+
+  /**
+   * Vertical orientation means splitter moves up-down.
+   */
+  VERTICAL: 'vertical'
+};
+
+
+/**
+ * Create the DOM node & text node needed for the splitpane.
+ * @override
+ */
+goog.ui.SplitPane.prototype.createDom = function() {
+  var dom = this.getDomHelper();
+
+  // Create the components.
+  var firstContainer = dom.createDom('div',
+      goog.ui.SplitPane.FIRST_CONTAINER_CLASS_NAME_);
+  var secondContainer = dom.createDom('div',
+      goog.ui.SplitPane.SECOND_CONTAINER_CLASS_NAME_);
+  var splitterHandle = dom.createDom('div',
+      goog.ui.SplitPane.HANDLE_CLASS_NAME_);
+
+  // Create the primary element, a DIV that holds the two containers and handle.
+  this.setElementInternal(dom.createDom('div', goog.ui.SplitPane.CLASS_NAME_,
+      firstContainer, secondContainer, splitterHandle));
+
+  this.firstComponentContainer_ = firstContainer;
+  this.secondComponentContainer_ = secondContainer;
+  this.splitpaneHandle_ = splitterHandle;
+  this.setUpHandle_();
+
+  this.finishSetup_();
+};
+
+
+/**
+ * Determines if a given element can be decorated by this type of component.
+ * @param {Element} element Element to decorate.
+ * @return {boolean} True if the element can be decorated, false otherwise.
+ * @override
+ */
+goog.ui.SplitPane.prototype.canDecorate = function(element) {
+  var className = goog.ui.SplitPane.FIRST_CONTAINER_CLASS_NAME_;
+  var firstContainer = goog.dom.getElementsByTagNameAndClass(
+      null, className, element)[0];
+  if (!firstContainer) {
+    return false;
+  }
+  // Since we have this component, save it so we don't have to get it
+  // again in decorateInternal.  Same w/other components.
+  this.firstComponentContainer_ = firstContainer;
+
+  className = goog.ui.SplitPane.SECOND_CONTAINER_CLASS_NAME_;
+  var secondContainer = goog.dom.getElementsByTagNameAndClass(
+      null, className, element)[0];
+  if (!secondContainer) {
+    return false;
+  }
+  this.secondComponentContainer_ = secondContainer;
+
+  className = goog.ui.SplitPane.HANDLE_CLASS_NAME_;
+  var splitpaneHandle = goog.dom.getElementsByTagNameAndClass(
+      null, className, element)[0];
+  if (!splitpaneHandle) {
+    return false;
+  }
+  this.splitpaneHandle_ = splitpaneHandle;
+
+  // We found all the components we're looking for, so return true.
+  return true;
+};
+
+
+/**
+ * Decorates the given HTML element as a SplitPane.  Overrides {@link
+ * goog.ui.Component#decorateInternal}.  Considered protected.
+ * @param {Element} element Element (SplitPane div) to decorate.
+ * @protected
+ * @override
+ */
+goog.ui.SplitPane.prototype.decorateInternal = function(element) {
+  goog.ui.SplitPane.superClass_.decorateInternal.call(this, element);
+
+  this.setUpHandle_();
+
+  var elSize = goog.style.getBorderBoxSize(element);
+  this.setSize(new goog.math.Size(elSize.width, elSize.height));
+
+  this.finishSetup_();
+};
+
+
+/**
+ * Parent the passed in components to the split containers.  Call their
+ * createDom methods if necessary.
+ * @private
+ */
+goog.ui.SplitPane.prototype.finishSetup_ = function() {
+  var dom = this.getDomHelper();
+
+  if (!this.firstComponent_.getElement()) {
+    this.firstComponent_.createDom();
+  }
+
+  dom.appendChild(this.firstComponentContainer_,
+      this.firstComponent_.getElement());
+
+  if (!this.secondComponent_.getElement()) {
+    this.secondComponent_.createDom();
+  }
+
+  dom.appendChild(this.secondComponentContainer_,
+      this.secondComponent_.getElement());
+
+  this.splitDragger_ = new goog.fx.Dragger(this.splitpaneHandle_,
+      this.splitpaneHandle_);
+
+  this.firstComponentContainer_.style.position = 'absolute';
+  this.secondComponentContainer_.style.position = 'absolute';
+  var handleStyle = this.splitpaneHandle_.style;
+  handleStyle.position = 'absolute';
+  handleStyle.overflow = 'hidden';
+  handleStyle.zIndex =
+      goog.ui.SplitPane.IframeOverlayIndex_.SPLITTER_HANDLE;
+};
+
+
+/**
+ * Setup all events and do an initial resize.
+ * @override
+ */
+goog.ui.SplitPane.prototype.enterDocument = function() {
+  goog.ui.SplitPane.superClass_.enterDocument.call(this);
+
+  // If position is not set in the inline style of the element, it is not
+  // possible to get the element's real CSS position until the element is in
+  // the document.
+  // When position:relative is set in the CSS and the element is not in the
+  // document, Safari, Chrome, and Opera always return the empty string; while
+  // IE always return "static".
+  // Do the final check to see if element's position is set as "relative",
+  // "absolute" or "fixed".
+  var element = this.getElement();
+  if (goog.style.getComputedPosition(element) == 'static') {
+    element.style.position = 'relative';
+  }
+
+  this.getHandler().
+      listen(this.splitpaneHandle_, goog.events.EventType.DBLCLICK,
+          this.handleDoubleClick_).
+      listen(this.splitDragger_, goog.fx.Dragger.EventType.START,
+          this.handleDragStart_).
+      listen(this.splitDragger_, goog.fx.Dragger.EventType.DRAG,
+          this.handleDrag_).
+      listen(this.splitDragger_, goog.fx.Dragger.EventType.END,
+          this.handleDragEnd_);
+
+  this.setFirstComponentSize(this.initialSize_);
+};
+
+
+/**
+ * Sets the initial size of the left or top component.
+ * @param {number} size The size in Pixels of the container.
+ */
+goog.ui.SplitPane.prototype.setInitialSize = function(size) {
+  this.initialSize_ = size;
+};
+
+
+/**
+ * Sets the SplitPane handle size.
+ * TODO(user): Make sure this works after initialization.
+ * @param {number} size The size of the handle in pixels.
+ */
+goog.ui.SplitPane.prototype.setHandleSize = function(size) {
+  this.handleSize_ = size;
+};
+
+
+/**
+ * Sets whether we resize on handle drag.
+ * @param {boolean} continuous The continuous resize value.
+ */
+goog.ui.SplitPane.prototype.setContinuousResize = function(continuous) {
+  this.continuousResize_ = continuous;
+};
+
+
+/**
+ * Returns whether the orientation for the split pane is vertical
+ * or not.
+ * @return {boolean} True if the orientation is vertical, false otherwise.
+ */
+goog.ui.SplitPane.prototype.isVertical = function() {
+  return this.orientation_ == goog.ui.SplitPane.Orientation.VERTICAL;
+};
+
+
+/**
+ * Initializes the handle by assigning the correct height/width and adding
+ * the correct class as per the orientation.
+ * @private
+ */
+goog.ui.SplitPane.prototype.setUpHandle_ = function() {
+  if (this.isVertical()) {
+    this.splitpaneHandle_.style.height = this.handleSize_ + 'px';
+    goog.dom.classes.add(this.splitpaneHandle_,
+        goog.ui.SplitPane.HANDLE_CLASS_NAME_VERTICAL_);
+  } else {
+    this.splitpaneHandle_.style.width = this.handleSize_ + 'px';
+    goog.dom.classes.add(this.splitpaneHandle_,
+        goog.ui.SplitPane.HANDLE_CLASS_NAME_HORIZONTAL_);
+  }
+};
+
+
+/**
+ * Sets the orientation class for the split pane handle.
+ * @protected
+ */
+goog.ui.SplitPane.prototype.setOrientationClassForHandle = function() {
+  if (this.isVertical()) {
+    goog.dom.classes.swap(this.splitpaneHandle_,
+                          goog.ui.SplitPane.HANDLE_CLASS_NAME_HORIZONTAL_,
+                          goog.ui.SplitPane.HANDLE_CLASS_NAME_VERTICAL_);
+  } else {
+    goog.dom.classes.swap(this.splitpaneHandle_,
+                          goog.ui.SplitPane.HANDLE_CLASS_NAME_VERTICAL_,
+                          goog.ui.SplitPane.HANDLE_CLASS_NAME_HORIZONTAL_);
+  }
+};
+
+
+/**
+ * Sets the orientation of the split pane.
+ * @param {goog.ui.SplitPane.Orientation} orientation SplitPane orientation.
+ */
+goog.ui.SplitPane.prototype.setOrientation = function(orientation) {
+  if (this.orientation_ != orientation) {
+    this.orientation_ = orientation;
+    var isVertical = this.isVertical();
+
+    // If the split pane is already in document, then the positions and sizes
+    // need to be adjusted.
+    if (this.isInDocument()) {
+      this.setOrientationClassForHandle();
+      // TODO(user): Should handleSize_ and initialSize_ also be adjusted ?
+      if (goog.isNumber(this.firstComponentSize_)) {
+        var splitpaneSize = goog.style.getBorderBoxSize(this.getElement());
+        var ratio = isVertical ? splitpaneSize.height / splitpaneSize.width :
+            splitpaneSize.width / splitpaneSize.height;
+        // TODO(user): Fix the behaviour for the case when the handle is
+        // placed on either of  the edges of the split pane. Also, similar
+        // behaviour is present in {@link #setSize}. Probably need to modify
+        // {@link #setFirstComponentSize}.
+        this.setFirstComponentSize(this.firstComponentSize_ * ratio);
+      } else {
+        this.setFirstComponentSize();
+      }
+    }
+  }
+};
+
+
+/**
+ * Gets the orientation of the split pane.
+ * @return {goog.ui.SplitPane.Orientation} The orientation.
+ */
+goog.ui.SplitPane.prototype.getOrientation = function() {
+  return this.orientation_;
+};
+
+
+/**
+ * Move and resize a container.  The sizing changes the BorderBoxSize.
+ * @param {Element} element The element to move and size.
+ * @param {goog.math.Rect} rect The top, left, width and height to change to.
+ * @private
+ */
+goog.ui.SplitPane.prototype.moveAndSize_ = function(element, rect) {
+
+  goog.style.setPosition(element, rect.left, rect.top);
+  // TODO(user): Add a goog.math.Size.max call for below.
+  goog.style.setBorderBoxSize(element,
+      new goog.math.Size(Math.max(rect.width, 0), Math.max(rect.height, 0)));
+};
+
+
+/**
+ * @return {?number} The size of the left/top component.
+ */
+goog.ui.SplitPane.prototype.getFirstComponentSize = function() {
+  return this.firstComponentSize_;
+};
+
+
+/**
+ * Set the size of the left/top component, and resize the other component based
+ * on that size and handle size.
+ * @param {?number=} opt_size The size of the top or left, in pixels.
+ */
+goog.ui.SplitPane.prototype.setFirstComponentSize = function(opt_size) {
+  var top = 0, left = 0;
+  var splitpaneSize = goog.style.getBorderBoxSize(this.getElement());
+
+  var isVertical = this.isVertical();
+  // Figure out first component size; it's either passed in, taken from the
+  // saved size, or is half of the total size.
+  var firstComponentSize = goog.isNumber(opt_size) ? opt_size :
+      goog.isNumber(this.firstComponentSize_) ? this.firstComponentSize_ :
+      Math.floor((isVertical ? splitpaneSize.height : splitpaneSize.width) / 2);
+  this.firstComponentSize_ = firstComponentSize;
+
+  var firstComponentWidth;
+  var firstComponentHeight;
+  var secondComponentWidth;
+  var secondComponentHeight;
+  var handleWidth;
+  var handleHeight;
+  var secondComponentLeft;
+  var secondComponentTop;
+  var handleLeft;
+  var handleTop;
+
+  if (isVertical) {
+
+    // Width for the handle and the first and second components will be the
+    // width of the split pane. The height for the first component will be
+    // the calculated first component size. The height for the second component
+    // will be the  total height minus the heights of the first component and
+    // the handle.
+    firstComponentHeight = firstComponentSize;
+    firstComponentWidth = splitpaneSize.width;
+    handleWidth = splitpaneSize.width;
+    handleHeight = this.handleSize_;
+    secondComponentHeight = splitpaneSize.height - firstComponentHeight -
+        handleHeight;
+    secondComponentWidth = splitpaneSize.width;
+    handleTop = top + firstComponentHeight;
+    handleLeft = left;
+    secondComponentTop = handleTop + handleHeight;
+    secondComponentLeft = left;
+  } else {
+
+    // Height for the handle and the first and second components will be the
+    // height of the split pane. The width for the first component will be
+    // the calculated first component size. The width for the second component
+    // will be the  total width minus the widths of the first component and
+    // the handle.
+    firstComponentWidth = firstComponentSize;
+    firstComponentHeight = splitpaneSize.height;
+    handleWidth = this.handleSize_;
+    handleHeight = splitpaneSize.height;
+    secondComponentWidth = splitpaneSize.width - firstComponentWidth -
+        handleWidth;
+    secondComponentHeight = splitpaneSize.height;
+    handleLeft = left + firstComponentWidth;
+    handleTop = top;
+    secondComponentLeft = handleLeft + handleWidth;
+    secondComponentTop = top;
+  }
+
+  // Now move and size the containers.
+  this.moveAndSize_(this.firstComponentContainer_,
+      new goog.math.Rect(left, top, firstComponentWidth, firstComponentHeight));
+
+  if (typeof this.firstComponent_.resize == 'function') {
+    this.firstComponent_.resize(new goog.math.Size(
+        firstComponentWidth, firstComponentHeight));
+  }
+
+  this.moveAndSize_(this.splitpaneHandle_, new goog.math.Rect(handleLeft,
+      handleTop, handleWidth, handleHeight));
+
+  this.moveAndSize_(this.secondComponentContainer_,
+      new goog.math.Rect(secondComponentLeft, secondComponentTop,
+          secondComponentWidth, secondComponentHeight));
+
+  if (typeof this.secondComponent_.resize == 'function') {
+    this.secondComponent_.resize(new goog.math.Size(secondComponentWidth,
+        secondComponentHeight));
+  }
+  // Fire a CHANGE event.
+  this.dispatchEvent(goog.ui.Component.EventType.CHANGE);
+};
+
+
+/**
+ * Dummy object to work around compiler warning.
+ * TODO(arv): Fix compiler or refactor to not depend on resize()
+ * @private
+ * @type {Object}
+ */
+goog.ui.SplitPane.resizeWarningWorkaround_ = {
+  /**
+   * @param {goog.math.Size} size The new size.
+   */
+  resize: function(size) {}
+};
+
+
+/**
+  * Set the size of the splitpane.  This is usually called by the controlling
+  * application.  This will set the SplitPane BorderBoxSize.
+  * @param {goog.math.Size} size The size to set the splitpane.
+  */
+goog.ui.SplitPane.prototype.setSize = function(size) {
+  goog.style.setBorderBoxSize(this.getElement(), size);
+  if (this.iframeOverlay_) {
+    goog.style.setBorderBoxSize(this.iframeOverlay_, size);
+  }
+  this.setFirstComponentSize();
+};
+
+
+/**
+ * Snap the container to the left or top on a Double-click.
+ * @private
+ */
+goog.ui.SplitPane.prototype.snapIt_ = function() {
+  var handlePos = goog.style.getRelativePosition(this.splitpaneHandle_,
+      this.firstComponentContainer_);
+  var firstBorderBoxSize =
+      goog.style.getBorderBoxSize(this.firstComponentContainer_);
+  var firstContentBoxSize =
+      goog.style.getContentBoxSize(this.firstComponentContainer_);
+
+  var isVertical = this.isVertical();
+
+  // Where do we snap the handle (what size to make the component) and what
+  // is the current handle position.
+  var snapSize;
+  var handlePosition;
+  if (isVertical) {
+    snapSize = firstBorderBoxSize.height - firstContentBoxSize.height;
+    handlePosition = handlePos.y;
+  } else {
+    snapSize = firstBorderBoxSize.width - firstContentBoxSize.width;
+    handlePosition = handlePos.x;
+  }
+
+  if (snapSize == handlePosition) {
+    // This means we're 'unsnapping', set it back to where it was.
+    this.setFirstComponentSize(this.savedSnapSize_);
+  } else {
+    // This means we're 'snapping', set the size to snapSize, and hide the
+    // first component.
+    if (isVertical) {
+      this.savedSnapSize_ = goog.style.getBorderBoxSize(
+          this.firstComponentContainer_).height;
+    } else {
+      this.savedSnapSize_ = goog.style.getBorderBoxSize(
+          this.firstComponentContainer_).width;
+    }
+    this.setFirstComponentSize(snapSize);
+  }
+};
+
+
+/**
+ * Handle the start drag event - set up the dragger.
+ * @param {goog.events.Event} e The event.
+ * @private
+ */
+goog.ui.SplitPane.prototype.handleDragStart_ = function(e) {
+
+  // Setup iframe overlay to prevent iframes from grabbing events.
+  if (!this.iframeOverlay_) {
+    // Create the overlay.
+    var cssStyles = 'position: relative';
+
+    if (goog.userAgent.IE) {
+      // IE doesn't look at this div unless it has a background, so we'll
+      // put one on, but make it opaque.
+      cssStyles += ';background-color: #000;filter: Alpha(Opacity=0)';
+    }
+    this.iframeOverlay_ =
+        this.getDomHelper().createDom('div', {'style': cssStyles});
+
+    this.getDomHelper().appendChild(this.getElement(), this.iframeOverlay_);
+  }
+  this.iframeOverlay_.style.zIndex =
+      goog.ui.SplitPane.IframeOverlayIndex_.OVERLAY;
+
+  goog.style.setBorderBoxSize(this.iframeOverlay_,
+      goog.style.getBorderBoxSize(this.getElement()));
+
+  var pos = goog.style.getPosition(this.firstComponentContainer_);
+
+  // For the size of the limiting box, we add the container content box sizes
+  // so that if the handle is placed all the way to the end or the start, the
+  // border doesn't exceed the total size. For position, we add the difference
+  // between the border box and content box sizes of the first container to the
+  // position of the first container. The start position should be such that
+  // there is no overlap of borders.
+  var limitWidth = 0;
+  var limitHeight = 0;
+  var limitx = pos.x;
+  var limity = pos.y;
+  var firstBorderBoxSize =
+      goog.style.getBorderBoxSize(this.firstComponentContainer_);
+  var firstContentBoxSize =
+      goog.style.getContentBoxSize(this.firstComponentContainer_);
+  var secondContentBoxSize =
+      goog.style.getContentBoxSize(this.secondComponentContainer_);
+  if (this.isVertical()) {
+    limitHeight = firstContentBoxSize.height + secondContentBoxSize.height;
+    limity += firstBorderBoxSize.height - firstContentBoxSize.height;
+  } else {
+    limitWidth = firstContentBoxSize.width + secondContentBoxSize.width;
+    limitx += firstBorderBoxSize.width - firstContentBoxSize.width;
+  }
+  var limits = new goog.math.Rect(limitx, limity, limitWidth, limitHeight);
+  this.splitDragger_.setLimits(limits);
+};
+
+
+/**
+ * Find the location relative to the splitpane.
+ * @param {number} left The x location relative to the window.
+ * @return {number} The relative x location.
+ * @private
+ */
+goog.ui.SplitPane.prototype.getRelativeLeft_ = function(left) {
+  return left - goog.style.getPosition(this.firstComponentContainer_).x;
+};
+
+
+/**
+ * Find the location relative to the splitpane.
+ * @param {number} top The y location relative to the window.
+ * @return {number} The relative y location.
+ * @private
+ */
+goog.ui.SplitPane.prototype.getRelativeTop_ = function(top) {
+  return top - goog.style.getPosition(this.firstComponentContainer_).y;
+};
+
+
+/**
+ * Handle the drag event. Move the containers.
+ * @param {goog.events.Event} e The event.
+ * @private
+ */
+goog.ui.SplitPane.prototype.handleDrag_ = function(e) {
+  if (this.continuousResize_) {
+    if (this.isVertical()) {
+      var top = this.getRelativeTop_(e.top);
+      this.setFirstComponentSize(top);
+    } else {
+      var left = this.getRelativeLeft_(e.left);
+      this.setFirstComponentSize(left);
+    }
+  }
+};
+
+
+/**
+ * Handle the drag end event. If we're not doing continuous resize,
+ * resize the component.  If we're doing continuous resize, the component
+ * is already the correct size.
+ * @param {goog.events.Event} e The event.
+ * @private
+ */
+goog.ui.SplitPane.prototype.handleDragEnd_ = function(e) {
+  // Push iframe overlay down.
+  this.iframeOverlay_.style.zIndex =
+      goog.ui.SplitPane.IframeOverlayIndex_.HIDDEN;
+  if (!this.continuousResize_) {
+    if (this.isVertical()) {
+      var top = this.getRelativeTop_(e.top);
+      this.setFirstComponentSize(top);
+    } else {
+      var left = this.getRelativeLeft_(e.left);
+      this.setFirstComponentSize(left);
+    }
+  }
+
+  this.dispatchEvent(goog.ui.SplitPane.EventType.HANDLE_DRAG_END);
+};
+
+
+/**
+ * Handle the Double-click. Call the snapIt method which snaps the container
+ * to the top or left.
+ * @param {goog.events.Event} e The event.
+ * @private
+ */
+goog.ui.SplitPane.prototype.handleDoubleClick_ = function(e) {
+  this.snapIt_();
+};
+
+
+/** @override */
+goog.ui.SplitPane.prototype.disposeInternal = function() {
+  goog.ui.SplitPane.superClass_.disposeInternal.call(this);
+
+  this.splitDragger_.dispose();
+  this.splitDragger_ = null;
+
+  goog.dom.removeNode(this.iframeOverlay_);
+  this.iframeOverlay_ = null;
+};
 // Copyright 2006 The Closure Library Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -30624,306 +31337,6 @@ goog.ui.ColorMenuButtonRenderer.prototype.initializeDom = function(button) {
       goog.ui.ColorMenuButtonRenderer.CSS_CLASS);
   goog.ui.ColorMenuButtonRenderer.superClass_.initializeDom.call(this,
       button);
-};
-// Copyright 2007 The Closure Library Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS-IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * @fileoverview Single-selection model implemenation.
- *
- * TODO(attila): Add keyboard & mouse event hooks?
- * TODO(attila): Add multiple selection?
- *
- * @author attila@google.com (Attila Bodis)
- */
-
-
-goog.provide('goog.ui.SelectionModel');
-
-goog.require('goog.array');
-goog.require('goog.events.EventTarget');
-goog.require('goog.events.EventType');
-
-
-
-/**
- * Single-selection model.  Dispatches a {@link goog.events.EventType.SELECT}
- * event when a selection is made.
- * @param {Array.<Object>=} opt_items Array of items; defaults to empty.
- * @extends {goog.events.EventTarget}
- * @constructor
- */
-goog.ui.SelectionModel = function(opt_items) {
-  goog.events.EventTarget.call(this);
-
-  /**
-   * Array of items controlled by the selection model.  If the items support
-   * the {@code setSelected(Boolean)} interface, they will be (de)selected
-   * as needed.
-   * @type {!Array.<Object>}
-   * @private
-   */
-  this.items_ = [];
-  this.addItems(opt_items);
-};
-goog.inherits(goog.ui.SelectionModel, goog.events.EventTarget);
-
-
-/**
- * The currently selected item (null if none).
- * @type {Object}
- * @private
- */
-goog.ui.SelectionModel.prototype.selectedItem_ = null;
-
-
-/**
- * Selection handler function.  Called with two arguments (the item to be
- * selected or deselected, and a Boolean indicating whether the item is to
- * be selected or deselected).
- * @type {Function}
- * @private
- */
-goog.ui.SelectionModel.prototype.selectionHandler_ = null;
-
-
-/**
- * Returns the selection handler function used by the selection model to change
- * the internal selection state of items under its control.
- * @return {Function} Selection handler function (null if none).
- */
-goog.ui.SelectionModel.prototype.getSelectionHandler = function() {
-  return this.selectionHandler_;
-};
-
-
-/**
- * Sets the selection handler function to be used by the selection model to
- * change the internal selection state of items under its control.  The
- * function must take two arguments:  an item and a Boolean to indicate whether
- * the item is to be selected or deselected.  Selection handler functions are
- * only needed if the items in the selection model don't natively support the
- * {@code setSelected(Boolean)} interface.
- * @param {Function} handler Selection handler function.
- */
-goog.ui.SelectionModel.prototype.setSelectionHandler = function(handler) {
-  this.selectionHandler_ = handler;
-};
-
-
-/**
- * Returns the number of items controlled by the selection model.
- * @return {number} Number of items.
- */
-goog.ui.SelectionModel.prototype.getItemCount = function() {
-  return this.items_.length;
-};
-
-
-/**
- * Returns the 0-based index of the given item within the selection model, or
- * -1 if no such item is found.
- * @param {Object|undefined} item Item to look for.
- * @return {number} Index of the given item (-1 if none).
- */
-goog.ui.SelectionModel.prototype.indexOfItem = function(item) {
-  return item ? goog.array.indexOf(this.items_, item) : -1;
-};
-
-
-/**
- * @return {Object|undefined} The first item, or undefined if there are no items
- *     in the model.
- */
-goog.ui.SelectionModel.prototype.getFirst = function() {
-  return this.items_[0];
-};
-
-
-/**
- * @return {Object|undefined} The last item, or undefined if there are no items
- *     in the model.
- */
-goog.ui.SelectionModel.prototype.getLast = function() {
-  return this.items_[this.items_.length - 1];
-};
-
-
-/**
- * Returns the item at the given 0-based index.
- * @param {number} index Index of the item to return.
- * @return {Object} Item at the given index (null if none).
- */
-goog.ui.SelectionModel.prototype.getItemAt = function(index) {
-  return this.items_[index] || null;
-};
-
-
-/**
- * Bulk-adds items to the selection model.  This is more efficient than calling
- * {@link #addItem} for each new item.
- * @param {Array.<Object>|undefined} items New items to add.
- */
-goog.ui.SelectionModel.prototype.addItems = function(items) {
-  if (items) {
-    // New items shouldn't be selected.
-    goog.array.forEach(items, function(item) {
-      this.selectItem_(item, false);
-    }, this);
-    goog.array.extend(this.items_, items);
-  }
-};
-
-
-/**
- * Adds an item at the end of the list.
- * @param {Object} item Item to add.
- */
-goog.ui.SelectionModel.prototype.addItem = function(item) {
-  this.addItemAt(item, this.getItemCount());
-};
-
-
-/**
- * Adds an item at the given index.
- * @param {Object} item Item to add.
- * @param {number} index Index at which to add the new item.
- */
-goog.ui.SelectionModel.prototype.addItemAt = function(item, index) {
-  if (item) {
-    // New items must not be selected.
-    this.selectItem_(item, false);
-    goog.array.insertAt(this.items_, item, index);
-  }
-};
-
-
-/**
- * Removes the given item (if it exists).  Dispatches a {@code SELECT} event if
- * the removed item was the currently selected item.
- * @param {Object} item Item to remove.
- */
-goog.ui.SelectionModel.prototype.removeItem = function(item) {
-  if (item && goog.array.remove(this.items_, item)) {
-    if (item == this.selectedItem_) {
-      this.selectedItem_ = null;
-      this.dispatchEvent(goog.events.EventType.SELECT);
-    }
-  }
-};
-
-
-/**
- * Removes the item at the given index.
- * @param {number} index Index of the item to remove.
- */
-goog.ui.SelectionModel.prototype.removeItemAt = function(index) {
-  this.removeItem(this.getItemAt(index));
-};
-
-
-/**
- * @return {Object} The currently selected item, or null if none.
- */
-goog.ui.SelectionModel.prototype.getSelectedItem = function() {
-  return this.selectedItem_;
-};
-
-
-/**
- * @return {!Array.<Object>} All items in the selection model.
- */
-goog.ui.SelectionModel.prototype.getItems = function() {
-  return goog.array.clone(this.items_);
-};
-
-
-/**
- * Selects the given item, deselecting any previously selected item, and
- * dispatches a {@code SELECT} event.
- * @param {Object} item Item to select (null to clear the selection).
- */
-goog.ui.SelectionModel.prototype.setSelectedItem = function(item) {
-  if (item != this.selectedItem_) {
-    this.selectItem_(this.selectedItem_, false);
-    this.selectedItem_ = item;
-    this.selectItem_(item, true);
-  }
-
-  // Always dispatch a SELECT event; let listeners decide what to do if the
-  // selected item hasn't changed.
-  this.dispatchEvent(goog.events.EventType.SELECT);
-};
-
-
-/**
- * @return {number} The 0-based index of the currently selected item, or -1
- *     if none.
- */
-goog.ui.SelectionModel.prototype.getSelectedIndex = function() {
-  return this.indexOfItem(this.selectedItem_);
-};
-
-
-/**
- * Selects the item at the given index, deselecting any previously selected
- * item, and dispatches a {@code SELECT} event.
- * @param {number} index Index to select (-1 to clear the selection).
- */
-goog.ui.SelectionModel.prototype.setSelectedIndex = function(index) {
-  this.setSelectedItem(this.getItemAt(index));
-};
-
-
-/**
- * Clears the selection model by removing all items from the selection.
- */
-goog.ui.SelectionModel.prototype.clear = function() {
-  goog.array.clear(this.items_);
-  this.selectedItem_ = null;
-};
-
-
-/** @override */
-goog.ui.SelectionModel.prototype.disposeInternal = function() {
-  goog.ui.SelectionModel.superClass_.disposeInternal.call(this);
-  delete this.items_;
-  this.selectedItem_ = null;
-};
-
-
-/**
- * Private helper; selects or deselects the given item based on the value of
- * the {@code select} argument.  If a selection handler has been registered
- * (via {@link #setSelectionHandler}, calls it to update the internal selection
- * state of the item.  Otherwise, attempts to call {@code setSelected(Boolean)}
- * on the item itself, provided the object supports that interface.
- * @param {Object} item Item to select or deselect.
- * @param {boolean} select If true, the object will be selected; if false, it
- *     will be deselected.
- * @private
- */
-goog.ui.SelectionModel.prototype.selectItem_ = function(item, select) {
-  if (item) {
-    if (typeof this.selectionHandler_ == 'function') {
-      // Use the registered selection handler function.
-      this.selectionHandler_(item, select);
-    } else if (typeof item.setSelected == 'function') {
-      // Call setSelected() on the item, if it supports it.
-      item.setSelected(select);
-    }
-  }
 };
 // Copyright 2008 The Closure Library Authors. All Rights Reserved.
 //
@@ -32167,63 +32580,6 @@ goog.ui.registry.setDecoratorByClassName(
     function() {
       return new goog.ui.ColorMenuButton(null);
     });
-// Copyright 2008 The Closure Library Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS-IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * @fileoverview A toolbar menu button renderer.
- *
- * @author attila@google.com (Attila Bodis)
- */
-
-goog.provide('goog.ui.ToolbarMenuButtonRenderer');
-
-goog.require('goog.ui.MenuButtonRenderer');
-
-
-
-/**
- * Toolbar-specific renderer for {@link goog.ui.MenuButton}s, based on {@link
- * goog.ui.MenuButtonRenderer}.
- * @constructor
- * @extends {goog.ui.MenuButtonRenderer}
- */
-goog.ui.ToolbarMenuButtonRenderer = function() {
-  goog.ui.MenuButtonRenderer.call(this);
-};
-goog.inherits(goog.ui.ToolbarMenuButtonRenderer, goog.ui.MenuButtonRenderer);
-goog.addSingletonGetter(goog.ui.ToolbarMenuButtonRenderer);
-
-
-/**
- * Default CSS class to be applied to the root element of menu buttons rendered
- * by this renderer.
- * @type {string}
- */
-goog.ui.ToolbarMenuButtonRenderer.CSS_CLASS =
-    goog.getCssName('goog-toolbar-menu-button');
-
-
-/**
- * Returns the CSS class to be applied to the root element of menu buttons
- * rendered using this renderer.
- * @return {string} Renderer-specific CSS class.
- * @override
- */
-goog.ui.ToolbarMenuButtonRenderer.prototype.getCssClass = function() {
-  return goog.ui.ToolbarMenuButtonRenderer.CSS_CLASS;
-};
 // Copyright 2008 The Closure Library Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -37045,7 +37401,7 @@ goog.require('Diceros.util');
 goog.require('Diceros.Window');
 goog.require('Diceros.LayerType');
 
-goog.scope(function(){
+goog.scope(function() {
 /**
  * レイヤー制御ウィンドウクラス
  *
@@ -37140,7 +37496,6 @@ Diceros.LayerWindow.prototype.createToolbar = function() {
     if (obj) {
       item = new goog.ui.MenuItem(obj.label);
       item.setValue(obj.type);
-
       goog.events.listen(
         item,
         goog.ui.Component.EventType.ACTION,
@@ -37275,12 +37630,12 @@ Diceros.Layer = function(app) {
   this.name = 'Layer';
   /**
    * キャンバス
-   * @type {?Element}
+   * @type {HTMLCanvasElement}
    */
   this.canvas = null;
   /**
    * キャンバスコンテキスト
-   * @type {Object}
+   * @type {CanvasRenderingContext2D}
    */
   this.ctx = null;
   /**
@@ -37299,7 +37654,9 @@ Diceros.Layer.prototype.init = function() {
   }
 
   this.canvas = this.app.makeCanvas(this.app.width, this.app.height);
-  this.ctx = this.canvas.getContext('2d');
+  this.ctx =
+    /** @type {CanvasRenderingContext2D} */
+    this.canvas.getContext('2d');
 
   goog.style.setStyle(this.canvas, 'position', 'absolute');
 
@@ -37495,11 +37852,18 @@ Diceros.RasterLayer.prototype.drawNewLine = function() {
   var outline = this.outline;
   /** @type {Diceros.LinePath} */
   var path;
+  /** @type {Diceros.Line} */
+  var line = this.currentLine;
 
   if (outline) {
     ctx.clearRect(outline.x, outline.y, outline.width, outline.height);
-    path = this.currentLine.path();
 
+    // optimization
+    if (typeof line.optimize === 'function') {
+      line.optimize(this.app.toolbar.lineOptimization.getValue() | 0);
+    }
+
+    path = line.path();
     if (path) {
       path.draw(this.ctx);
     }
@@ -37568,6 +37932,7 @@ Diceros.Point = function(x, y, opt_width, opt_noPressure) {
 /**
  * @param {goog.events.BrowserEvent} ev browser event.
  * @param {number=} opt_baseWidth base point width.
+ * @param {boolean=} opt_noPressure if true, no use pressure.
  * @return {Diceros.Point} new point object.
  */
 Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
@@ -37577,8 +37942,8 @@ Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
   var x;
   /** @type {number} */
   var y;
-  /** @type {number} */
-  var width;
+  /** @type {Element} */
+  ev.target;
   /** @type {goog.math.Coordinate} */
   var offset = goog.style.getPageOffset(ev.target);
 
@@ -37607,7 +37972,7 @@ Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
  * @return {number} 筆圧(0.0-1.0).
  */
 Diceros.Point.prototype.getPressure = function(opt_event) {
-  /** @type {HTMLElement} */
+  /** @type {Element} */
   var plugin = this.getWacomPlugin();
   /** @type {Event} */
   var browserEvent;
@@ -37645,7 +38010,7 @@ Diceros.Point.prototype.getPressure = function(opt_event) {
 
 /**
  * ペンタブレットのプラグイン
- * @return {Object} wacom plugin.
+ * @return {Element} wacom plugin.
  */
 Diceros.Point.prototype.getWacomPlugin = function() {
   return document.querySelector('object[type="application/x-wacomtabletplugin"]');
@@ -38058,11 +38423,6 @@ Diceros.LinePath.ReverseMethodTable = (function(table) {
   /** @type {number} */
   var value;
 
-  // initialize
-  for (i = 0; i < 128; ++i) {
-    reverseTable[i] = 0;
-  }
-
   // create reverse table, prototype functions
   for (i = 0, il = keys.length; i < il; ++i) {
     key = keys[i];
@@ -38104,7 +38464,7 @@ Diceros.LinePath.PropertyTable = { // 0x80-0xff
 };
 
 /**
- * @type {Array.<number>}
+ * @type {Array.<string>}
  */
 Diceros.LinePath.ReversePropertyTable = (function(table) {
   /** @type {Array.<string>} */
@@ -38119,11 +38479,6 @@ Diceros.LinePath.ReversePropertyTable = (function(table) {
   var key;
   /** @type {number} */
   var value;
-
-  // initialize
-  for (i = 0; i < 128; ++i) {
-    reverseTable[i] = 0;
-  }
 
   // create reverse table, prototype properties
   for (i = 0, il = keys.length; i < il; ++i) {
@@ -38182,6 +38537,9 @@ Diceros.Line = function(opt_color) {
    * XXX: 何の配列か書く
    */
   this.ctrlPoints = [];
+
+  /** @type {string} */
+  opt_color;
 
   /**
    * @type {string}
@@ -38312,7 +38670,7 @@ Diceros.BezierAGG.prototype.addControlPoint = function(point) {
  * 制御点の削除
  * @param {number} index 削除する制御点の index.
  */
-Diceros.BezierAGG.prototype.removeConrtrolPoint = function(index) {
+Diceros.BezierAGG.prototype.removeControlPoint = function(index) {
   var ctrlPoints = this.ctrlPoints;
   var curveCtrlPoints = this.curveCtrlPoints;
   var subCtrlPoints = this.subCtrlPoints;
@@ -38372,13 +38730,7 @@ Diceros.BezierAGG.prototype.updateControlPoint = function(index, point) {
  * アウトラインのパスを求める.
  * @param {number=} opt_width 幅を固定する場合は指定する.
  * @param {string=} opt_color 色を固定する場合は指定する.
- * @return {{
- *   path: Diceros.LinePath,
- *   x: number,
- *   y: number,
- *   width: number,
- *   height, number
- * }} 描画コンテキスト.
+ * @return {Diceros.LinePath} 描画コンテキスト.
  */
 Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color) {
   var data = this.ctrlPoints,
@@ -38393,6 +38745,9 @@ Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color) {
 
   /** @type {Diceros.LinePath} */
   var ctx = new Diceros.LinePath();
+
+  /** @type {CanvasRenderingContext2D} */
+  ctx;
 
   ctx.color = opt_color || this.color;
 
@@ -38461,6 +38816,7 @@ Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color) {
   ctx.width = maxX - minX;
   ctx.height = maxY - minY;
 
+  /** @type {Diceros.LinePath} */
   return minX === Infinity ? null : ctx;
 };
 
@@ -38484,12 +38840,72 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
   var cp1;
   var cp2;
 
+  /** @type {Diceros.LinePath} */
   var ctx = new Diceros.LinePath();
+
+  /** @type {CanvasRenderingContext2D} */
+  ctx;
 
   ctx.color = opt_color || this.color;
 
   // 描画
   ctx.beginPath();
+
+  // 点と直線はそのまま描画する
+  if (data.length === 1) {
+    point = data[0];
+
+    ctx.moveTo(point.x + point.width, point.y);
+    ctx.arc(point.x, point.y, point.width, 0, 7, false);
+    ctx.fill();
+
+    ctx.x = point.x - point.width;
+    ctx.y = point.y - point.width;
+    ctx.width = ctx.height = point.width * 2;
+
+    /** @type {Diceros.LinePath} */
+    return ctx;
+  } else if (data.length === 2) {
+    point = data[0];
+    next = data[1];
+
+    radius = Math.atan2(next.y - point.y, next.x - point.x);
+    while (radius < Math.PI / 2) {
+      radius += Math.PI * 2;
+    }
+    ctx.moveTo(
+      point.x + point.width * Math.cos(radius - Math.PI / 2),
+      point.y + point.width * Math.sin(radius - Math.PI / 2)
+    );
+    ctx.arc(point.x, point.y, point.width, radius - Math.PI / 2, radius + Math.PI / 2, true);
+    ctx.lineTo(
+      next.x + next.width * Math.cos(radius + Math.PI / 2),
+      next.y + next.width * Math.sin(radius + Math.PI / 2)
+    );
+    ctx.arc(next.x, next.y, next.width, radius + Math.PI / 2, radius - Math.PI / 2, true);
+    ctx.lineTo(
+      point.x + point.width * Math.cos(radius - Math.PI / 2),
+      point.y + point.width * Math.sin(radius - Math.PI / 2)
+    );
+
+    ctx.fill();
+
+    minX = point.x - point.width;
+    (x = next.x - next.width) < minX && (minX = x);
+    maxX = point.x + point.width;
+    (x = next.x + next.width) > maxX && (maxX = x);
+    minY = point.y - point.width;
+    (y = next.y - next.width) < minY && (minY = y);
+    maxY = point.x + point.width;
+    (y = next.y + next.width) > maxY && (maxY = y);
+    ctx.x = minX;
+    ctx.y = minY;
+    ctx.width = maxX - minX;
+    ctx.height = maxY - minY;
+
+    /** @type {Diceros.LinePath} */
+    return ctx;
+  }
 
   /*
   // 始点、終点の描画
@@ -38590,7 +39006,6 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
     }
   }
 
-  ctx.fillStyle = 'rgb(0,0,0)'; // XXX
   ctx.fill();
 
   ctx.x = minX;
@@ -38598,6 +39013,7 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
   ctx.width = maxX - minX;
   ctx.height = maxY - minY;
 
+  /** @type {Diceros.LinePath} */
   return minX === Infinity ? null : ctx;
 };
 
@@ -38895,20 +39311,28 @@ function(s, c1, c2, e, depth, opt_l1, opt_l2) {
   };
 };
 
-Diceros.BezierAGG.prototype.optimize = function() {
+/**
+ * @param {number} param optimize parameter.
+ */
+Diceros.BezierAGG.prototype.optimize = function(param) {
   var ctrlPoints = this.ctrlPoints;
   var curvePoints = this.curveCtrlPoints;
   var i;
   var optimizeValue;
   var prev = ctrlPoints.length;
 
+  if (param === 0) {
+    return;
+  }
+
   for (i = 0; i < ctrlPoints.length - 2;) {
     optimizeValue = this.checkRemoval(
+      param,
       ctrlPoints[i], ctrlPoints[i+1], ctrlPoints[i+2],
       curvePoints[i][0], curvePoints[i][1],
       curvePoints[i+1][0], curvePoints[i+1][1]
     );
-    if (optimizeValue.distance < 3) {
+    if (optimizeValue.removal) {
       ctrlPoints.splice(i + 1, 1);
       curvePoints.splice(i + 1, 1);
       curvePoints[i][0] = optimizeValue.newCtrlPoint1;
@@ -38924,36 +39348,45 @@ Diceros.BezierAGG.prototype.optimize = function() {
 };
 
 /**
+ * @param {number} dist 補正パラメータ.
  * @param {Diceros.Point} p0 ベジェ曲線上の点1.
  * @param {Diceros.Point} p1 ベジェ曲線上の点2.
  * @param {Diceros.Point} p2 ベジェ曲線上の点3.
- * @return {boolean} 省略可能ならばtrueを返す.
+ * @return {!{removal: boolean}} 削除可能ならば removal は true となる.
  * curveCtrlPoints... 制御点
  * ctrlPoints... ベジェ曲線上の点
  */
-Diceros.BezierAGG.prototype.checkRemoval = function(p0, p1, p2, cp00, cp01, cp10, cp11) {
+Diceros.BezierAGG.prototype.checkRemoval = function(dist, p0, p1, p2, cp00, cp01, cp10, cp11) {
   var edge0 = this.pythagorean_(p1, cp01);
-  var edge1 = this.pythagorean_(p1, cp11);
-  var ratio0 = edge1 / edge0;
-  var ratio1 = edge0 / edge1;
-  var cross = this.calcCrossPoint(cp00, cp01, cp10, cp11);
-  var cp02 = {
-    x: cp01.x + (cp01.x - p0.x) * ratio0,
-    y: cp01.y + (cp01.y - p0.y) * ratio0
-  };
-  var cp12 = {
-    x: cp11.x + (cp11.x - p2.x) * ratio1,
-    y: cp11.y + (cp11.y - p2.y) * ratio1
-  };
-  var cp = {
-    x: cp02.x + (cp12.x - cp02.x) * (edge0 + edge1) / edge0,
-    y: cp02.y + (cp12.y - cp02.y) * (edge0 + edge1) / edge0
-  };
+  var edge1 = this.pythagorean_(p1, cp10);
+  var t = edge0 === 0 ? 0 : edge0 / (edge0 + edge1);
+  if (t === 0 || t === 1) {
+    return {removal: false};
+  }
+  var cp02 = new Diceros.Point(
+    p0.x + (cp00.x - p0.x) / t,
+    p0.y + (cp00.y - p0.y) / t,
+    null
+  );
+  var cp12 = new Diceros.Point(
+    p2.x + (cp11.x - p2.x) / (1 / t),
+    p2.y + (cp11.y - p2.y) / (1 / t),
+    null
+  );
+  var p3 = this.getBezierPoint_(cp02, cp12, t);
+  var p4 = this.getBezierPoint_(cp00, p3, t);
+  var p5 = this.getBezierPoint_(p3, cp11, t);
+  var p6 = this.getBezierPoint_(p4, p5, t);
+  var removal;
 
   // TODO: width も t:1-s に収まっているか調べる
+  removal =
+    this.pythagorean_(p6, p1) < dist &&
+    this.pythagorean_(p4, cp01) < dist &&
+    this.pythagorean_(p5, cp10) < dist;
 
   return {
-    distance: this.pythagorean_(cp, cross),
+    removal: removal,
     newCtrlPoint1: cp02,
     newCtrlPoint2: cp12
   };
@@ -39094,15 +39527,17 @@ Diceros.VectorLayer = function(app) {
   this.currentCtrlPoint = null;
   /**
    * 編集している線よりも前の線を記憶しておくバッファ
-   * @type {HTMLCanvasObject}
+   * @type {CanvasRenderingContext2D}
    */
   this.frontBuffer =
+  /** @type {CanvasRenderingContext2D} */
     this.app.makeCanvas(this.app.width, this.app.height).getContext('2d');
   /**
    * 編集している線よりも後ろの線を記憶しておくバッファ
-   * @type {HTMLCanvasObject}
+   * @type {CanvasRenderingContext2D}
    */
   this.backBuffer =
+    /** @type {CanvasRenderingContext2D} */
     this.app.makeCanvas(this.app.width, this.app.height).getContext('2d');
   /**
    * オーバーレイのコンテキスト.
@@ -39111,7 +39546,7 @@ Diceros.VectorLayer = function(app) {
   this.overlay = this.app.windows[this.app.currentCanvasWindow].overlay.ctx;
   /**
    * 描画アウトライン用の一時パス.
-   * @type {Diceros.Linepath}
+   * @type {Diceros.LinePath}
    */
   this.outlinePath;
 };
@@ -39154,6 +39589,9 @@ Diceros.VectorLayer.prototype.event = function(event) {
     case Diceros.VectorLayer.Mode.EDIT:
       this.handleEventEdit(event);
       break;
+    case Diceros.VectorLayer.Mode.DELETE:
+      this.handleEventDelete(event);
+      break;
     default:
       // NOP
   }
@@ -39176,6 +39614,9 @@ Diceros.VectorLayer.prototype.event = function(event) {
   if (this.mode === Diceros.VectorLayer.Mode.EDIT) {
     this.drawCtrlPoint();
   }
+  if (this.mode === Diceros.VectorLayer.Mode.DELETE) {
+    this.drawCtrlPoint();
+  }
 };
 
 // reset
@@ -39184,6 +39625,7 @@ Diceros.VectorLayer.prototype.switchMode = function(mode) {
   this.clearCtrlPoint();
 
   switch (this.mode) {
+    case Diceros.VectorLayer.Mode.DELETE: /* FALLTHROUGH */
     case Diceros.VectorLayer.Mode.EDIT:
       this.drawCtrlPoint();
       break;
@@ -39263,7 +39705,7 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
       /* FALLTHROUGH */
     case goog.events.EventType.MOUSEDOWN:
       // 制御点が選択可能な位置ならば、その制御点を更新する
-      if (ctrlPoint !== null) {
+      if (ctrlPoint) {
         line = this.lines[ctrlPoint.lineIndex];
         width = (line.getCtrlPoints())[ctrlPoint.pointIndex].width;
 
@@ -39284,7 +39726,7 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
     case goog.events.EventType.MOUSEMOVE:
       // ドラッグ中
       if (this.app.getCurrentCanvasWindow().drag) {
-        if (ctrlPoint !== null) {
+        if (ctrlPoint) {
           width = (currentLine.getCtrlPoints())[ctrlPoint.pointIndex].width;
 
           currentLine.updateControlPoint(
@@ -39319,7 +39761,7 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
       break;
     // WHEEL
     case goog.events.MouseWheelHandler.EventType.MOUSEWHEEL:
-      if (ctrlPoint !== null) {
+      if (ctrlPoint) {
         // update current line
         this.currentLine = ctrlPoint.lineIndex;
         currentLine = this.lines[this.currentLine];
@@ -39349,18 +39791,50 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
         this.refreshCurrentLine();
       }
       break;
-    // KEY DOWN
-    case goog.events.EventType.KEYDOWN:
-      break;
-    // KEY UP
-    case goog.events.EventType.KEYUP:
+  }
+};
+
+/**
+ * @param {goog.events.BrowserEvent} event browser event.
+ */
+Diceros.VectorLayer.prototype.handleEventDelete = function(event) {
+  var ctrlPoint = this.currentCtrlPoint;
+  var currentLine = this.lines[this.currentLine];
+  var line;
+  var width;
+
+  switch (event.type) {
+    // START
+    case goog.events.EventType.TOUCHSTART:
+      this.updateCursor(event);
+      ctrlPoint = this.currentCtrlPoint;
+      currentLine = this.lines[this.currentLine];
+      /* FALLTHROUGH */
+    case goog.events.EventType.MOUSEDOWN:
+      // 制御点が選択可能な位置ならば、その制御点を更新する
+      if (ctrlPoint) {
+        line = this.lines[ctrlPoint.lineIndex];
+        width = (line.getCtrlPoints())[ctrlPoint.pointIndex].width;
+
+        this.currentLine = ctrlPoint.lineIndex;
+
+        // 制御点の更新
+        line.removeControlPoint(
+          ctrlPoint.pointIndex,
+          Diceros.Point.createFromEvent(event, width, true)
+        );
+
+        // 線の選択
+        this.selectLine();
+        this.refreshCurrentLine();
+      }
       break;
   }
 };
 
 /**
  * サンプリングを行う
-  * @param {goog.events.BrowserEvent} event Eventオブジェクト.
+ * @param {goog.events.BrowserEvent} event Eventオブジェクト.
  */
 Diceros.VectorLayer.prototype.sampling = function(event) {
   /** @type {Diceros.Line} */
@@ -39384,6 +39858,11 @@ Diceros.VectorLayer.prototype.drawNewline = function() {
   /** @type {CanvasRenderingContext2D} */
   var overlay = this.overlay;
 
+  // optimization
+  if (typeof line.optimize === 'function') {
+    line.optimize(this.app.toolbar.lineOptimization.getValue() | 0);
+  }
+
   // clear outline
   if (path) {
     overlay.clearRect(path.x - 2, path.y - 2, path.width + 4, path.height + 4);
@@ -39391,7 +39870,6 @@ Diceros.VectorLayer.prototype.drawNewline = function() {
   }
 
   // draw new line
-  //line.optimize();
   path = this.paths[lineIndex] = line.path();
   if (path) {
     path.draw(this.ctx);
@@ -39534,9 +40012,9 @@ Diceros.VectorLayer.prototype.updateCursor = function(event) {
     case Diceros.VectorLayer.Mode.DEFAULT:
       goog.style.setStyle(cssTarget, 'cursor', 'default');
       break;
+    case Diceros.VectorLayer.Mode.DELETE:
     case Diceros.VectorLayer.Mode.EDIT:
       ctrlPoint = this.checkCtrlPoint(x, y, width);
-
       if (ctrlPoint) {
         goog.style.setStyle(cssTarget, 'cursor', 'move');
       } else {
@@ -40114,7 +40592,7 @@ Diceros.SizerWindow = function(app, index, opt_domHelper) {
   this.name = 'SizerWindow';
   /** @type {!Element} */
   this.element;
-  /** @type {!Element} */
+  /** @type {HTMLCanvasElement} */
   this.canvas;
   /** @type {number} */
   this.width = 0;
@@ -40349,6 +40827,8 @@ goog.require('goog.ui.SelectionModel');
 goog.require('goog.ui.ToolbarColorMenuButton');
 goog.require('goog.ui.ToolbarColorMenuButtonRenderer');
 goog.require('goog.ui.ToolbarSeparator');
+goog.require('goog.ui.Option');
+goog.require('goog.ui.ToolbarSelect');
 
 goog.scope(function() {
 
@@ -40445,7 +40925,7 @@ Diceros.Application.prototype.layout = function() {
     sizer, layer,
     goog.ui.SplitPane.Orientation.VERTICAL
   );
-  layout.toolSplitPane.setInitialSize(200);
+  layout.toolSplitPane.setInitialSize(150);
   layout.toolSplitPane.setContinuousResize(true);
   layout.toolSplitPane.resize = function(size) {
     layout.toolSplitPane.setSize(size.width, size.height);
@@ -40456,7 +40936,7 @@ Diceros.Application.prototype.layout = function() {
     canvas, layout.toolSplitPane,
     goog.ui.SplitPane.Orientation.HORIZONTAL
   );
-  layout.baseSplitPane.setInitialSize(this.width - 200);
+  layout.baseSplitPane.setInitialSize(this.width - 150);
   layout.baseSplitPane.setContinuousResize(true);
 
   // ツールバー
@@ -40504,15 +40984,6 @@ Diceros.Application.prototype.addWindow = function(type) {
       return this.windows[this.sizerWindow];
     }
     break;
-  case Diceros.WindowType.COLORPICK_WINDOW:
-    // singleton
-    if (typeof this.colorpickWindow !== 'number') {
-      newWindow = new Diceros.ColorPickWindow(this, currentSize);
-      this.colorPickWindow = currentSize;
-    } else {
-      return this.windows[this.colorPickWindow];
-    }
-    break;
   default:
     throw 'unsupported window class';
   }
@@ -40550,31 +41021,13 @@ Diceros.Application.prototype.getCurrentSizerWindow = function() {
  * キャンバスの作成
  * @param {number} width 作成するキャンバスの横幅.
  * @param {number} height 作成するキャンバスの縦幅.
- * @return {!Element} 作成したキャンバス.
+ * @return {HTMLCanvasElement} 作成したキャンバス.
  */
 Diceros.Application.prototype.makeCanvas = function(width, height) {
-  var canvas = document.createElement('canvas');
-
-  // for canvas emulator
-  if (!canvas.getContext) {
-    // excanvas
-    if (window.G_vmlCanvasManager && window.G_vmlCanvasManager.initElement) {
-      canvas = window.G_vmlCanvasManager.initElement(canvas);
-    // uucanvas
-    } else if (window.uu && window.uu.canvas &&
-               typeof window.uu.canvas.create === 'function') {
-      var dummynode = goog.dom.createElement('div');
-      var uu = window.uu;
-
-      goog.dom.setProperties(dummynode, {'id': '_canvas_dummy'});
-
-      canvas = uu.canvas.create(
-        width, height, 'vml', uu.id('_canvas_dummy')
-      );
-    } else {
-      throw 'canvas not supported';
-    }
-  }
+  /** @type {HTMLCanvasElement} */
+  var canvas =
+    /** @type {HTMLCanvasElement} */
+    document.createElement('canvas');
 
   canvas.width = width;
   canvas.height = height;
@@ -40618,16 +41071,27 @@ Diceros.Application.prototype.setEvent = function() {
  * ツールバーの作成
  */
 Diceros.Application.prototype.createToolbar = function() {
+  /** @type {goog.ui.Toolbar} */
   var toolbar = this.toolbar = new goog.ui.Toolbar();
+  /** @type {goog.ui.SelectionModel} */
   var selectionModel = new goog.ui.SelectionModel();
+  /** @type {Diceros.Application} */
   var that = this;
+  /** @type {number} */
+  var i;
 
   toolbar.modeButtons = {
     '描画': {
-      value: Diceros.VectorLayer.Mode.DEFAULT
+      value: Diceros.VectorLayer.Mode.DEFAULT,
+      button: void 0
     },
     '編集': {
-      value: Diceros.VectorLayer.Mode.EDIT
+      value: Diceros.VectorLayer.Mode.EDIT,
+      button: void 0
+    },
+    '削除': {
+      value: Diceros.VectorLayer.Mode.DELETE,
+      button: void 0
     }
   };
 
@@ -40670,28 +41134,48 @@ Diceros.Application.prototype.createToolbar = function() {
 
     that.refreshToolbar();
   }
+  // separator
+  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
 
-  this.refreshToolbar();
+  // line optimization button
+  var optimizationMenu = new goog.ui.Menu();
+  for (i = 0; i <= 10; ++i) {
+    optimizationMenu.addChild(new goog.ui.Option(""+i), true);
+  }
+  var selector = new goog.ui.ToolbarSelect('線の補正', optimizationMenu);
+  selector.setTooltip('線の補正');
+  toolbar.addChild(selector, true);
+  toolbar.lineOptimization = selector;
+
+  goog.dom.classes.add(selector.getElement(), 'goog-toolbar-select');
 
   // rendering
+  this.refreshToolbar();
   toolbar.render(this.target);
 };
 
 Diceros.Application.prototype.refreshToolbar = function() {
+  /** @type {goog.ui.Toolbar} */
   var toolbar = this.toolbar;
+  /** @type {Array.<string>} */
   var keys = Object.keys(toolbar.modeButtons);
+  /** @type {string} */
   var key;
+  /** @type {number} */
   var i;
+  /** @type {number} */
   var il;
+  /** @type {goog.ui.ToolbarToggleButton} */
   var button;
-  var currentLayer;
-  var isVector;
+  /** @type {Diceros.Layer} */
+  var currentLayer = this.getCurrentCanvasWindow().getCurrentLayer();
+  /** @type {boolean} */
+  var isVector = currentLayer instanceof Diceros.VectorLayer;
 
+  // mode buttons
   for (i = 0, il = keys.length; i < il; ++i) {
     key = keys[i];
     button = toolbar.modeButtons[key].button;
-    currentLayer = this.getCurrentCanvasWindow().getCurrentLayer();
-    isVector = currentLayer instanceof Diceros.VectorLayer;
 
     if (isVector) {
       button.setEnabled(true);
@@ -40702,6 +41186,14 @@ Diceros.Application.prototype.refreshToolbar = function() {
       button.setEnabled(false);
     }
   }
+
+  // line optimization button
+  /*
+  toolbar.optimizeButton.setEnabled(isVector);
+
+  // point optimization button
+  toolbar.pointOptimize.setEnabled(isVector);
+  */
 };
 
 // end of scope

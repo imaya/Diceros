@@ -58,15 +58,17 @@ Diceros.VectorLayer = function(app) {
   this.currentCtrlPoint = null;
   /**
    * 編集している線よりも前の線を記憶しておくバッファ
-   * @type {HTMLCanvasObject}
+   * @type {CanvasRenderingContext2D}
    */
   this.frontBuffer =
+  /** @type {CanvasRenderingContext2D} */
     this.app.makeCanvas(this.app.width, this.app.height).getContext('2d');
   /**
    * 編集している線よりも後ろの線を記憶しておくバッファ
-   * @type {HTMLCanvasObject}
+   * @type {CanvasRenderingContext2D}
    */
   this.backBuffer =
+    /** @type {CanvasRenderingContext2D} */
     this.app.makeCanvas(this.app.width, this.app.height).getContext('2d');
   /**
    * オーバーレイのコンテキスト.
@@ -75,7 +77,7 @@ Diceros.VectorLayer = function(app) {
   this.overlay = this.app.windows[this.app.currentCanvasWindow].overlay.ctx;
   /**
    * 描画アウトライン用の一時パス.
-   * @type {Diceros.Linepath}
+   * @type {Diceros.LinePath}
    */
   this.outlinePath;
 };

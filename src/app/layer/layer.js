@@ -24,12 +24,12 @@ Diceros.Layer = function(app) {
   this.name = 'Layer';
   /**
    * キャンバス
-   * @type {?Element}
+   * @type {HTMLCanvasElement}
    */
   this.canvas = null;
   /**
    * キャンバスコンテキスト
-   * @type {Object}
+   * @type {CanvasRenderingContext2D}
    */
   this.ctx = null;
   /**
@@ -48,7 +48,9 @@ Diceros.Layer.prototype.init = function() {
   }
 
   this.canvas = this.app.makeCanvas(this.app.width, this.app.height);
-  this.ctx = this.canvas.getContext('2d');
+  this.ctx =
+    /** @type {CanvasRenderingContext2D} */
+    this.canvas.getContext('2d');
 
   goog.style.setStyle(this.canvas, 'position', 'absolute');
 

@@ -185,15 +185,6 @@ Diceros.Application.prototype.addWindow = function(type) {
       return this.windows[this.sizerWindow];
     }
     break;
-  case Diceros.WindowType.COLORPICK_WINDOW:
-    // singleton
-    if (typeof this.colorpickWindow !== 'number') {
-      newWindow = new Diceros.ColorPickWindow(this, currentSize);
-      this.colorPickWindow = currentSize;
-    } else {
-      return this.windows[this.colorPickWindow];
-    }
-    break;
   default:
     throw 'unsupported window class';
   }
@@ -231,31 +222,13 @@ Diceros.Application.prototype.getCurrentSizerWindow = function() {
  * キャンバスの作成
  * @param {number} width 作成するキャンバスの横幅.
  * @param {number} height 作成するキャンバスの縦幅.
- * @return {!Element} 作成したキャンバス.
+ * @return {HTMLCanvasElement} 作成したキャンバス.
  */
 Diceros.Application.prototype.makeCanvas = function(width, height) {
-  var canvas = document.createElement('canvas');
-
-  // for canvas emulator
-  if (!canvas.getContext) {
-    // excanvas
-    if (window.G_vmlCanvasManager && window.G_vmlCanvasManager.initElement) {
-      canvas = window.G_vmlCanvasManager.initElement(canvas);
-    // uucanvas
-    } else if (window.uu && window.uu.canvas &&
-               typeof window.uu.canvas.create === 'function') {
-      var dummynode = goog.dom.createElement('div');
-      var uu = window.uu;
-
-      goog.dom.setProperties(dummynode, {'id': '_canvas_dummy'});
-
-      canvas = uu.canvas.create(
-        width, height, 'vml', uu.id('_canvas_dummy')
-      );
-    } else {
-      throw 'canvas not supported';
-    }
-  }
+  /** @type {HTMLCanvasElement} */
+  var canvas =
+    /** @type {HTMLCanvasElement} */
+    document.createElement('canvas');
 
   canvas.width = width;
   canvas.height = height;

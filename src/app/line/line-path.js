@@ -101,11 +101,6 @@ Diceros.LinePath.ReverseMethodTable = (function(table) {
   /** @type {number} */
   var value;
 
-  // initialize
-  for (i = 0; i < 128; ++i) {
-    reverseTable[i] = 0;
-  }
-
   // create reverse table, prototype functions
   for (i = 0, il = keys.length; i < il; ++i) {
     key = keys[i];
@@ -147,7 +142,7 @@ Diceros.LinePath.PropertyTable = { // 0x80-0xff
 };
 
 /**
- * @type {Array.<number>}
+ * @type {Array.<string>}
  */
 Diceros.LinePath.ReversePropertyTable = (function(table) {
   /** @type {Array.<string>} */
@@ -162,11 +157,6 @@ Diceros.LinePath.ReversePropertyTable = (function(table) {
   var key;
   /** @type {number} */
   var value;
-
-  // initialize
-  for (i = 0; i < 128; ++i) {
-    reverseTable[i] = 0;
-  }
 
   // create reverse table, prototype properties
   for (i = 0, il = keys.length; i < il; ++i) {

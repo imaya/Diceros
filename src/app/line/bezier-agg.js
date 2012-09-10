@@ -124,13 +124,7 @@ Diceros.BezierAGG.prototype.updateControlPoint = function(index, point) {
  * アウトラインのパスを求める.
  * @param {number=} opt_width 幅を固定する場合は指定する.
  * @param {string=} opt_color 色を固定する場合は指定する.
- * @return {{
- *   path: Diceros.LinePath,
- *   x: number,
- *   y: number,
- *   width: number,
- *   height, number
- * }} 描画コンテキスト.
+ * @return {Diceros.LinePath} 描画コンテキスト.
  */
 Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color) {
   var data = this.ctrlPoints,
@@ -145,6 +139,9 @@ Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color) {
 
   /** @type {Diceros.LinePath} */
   var ctx = new Diceros.LinePath();
+
+  /** @type {CanvasRenderingContext2D} */
+  ctx;
 
   ctx.color = opt_color || this.color;
 
@@ -213,6 +210,7 @@ Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color) {
   ctx.width = maxX - minX;
   ctx.height = maxY - minY;
 
+  /** @type {Diceros.LinePath} */
   return minX === Infinity ? null : ctx;
 };
 
@@ -236,7 +234,11 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
   var cp1;
   var cp2;
 
+  /** @type {Diceros.LinePath} */
   var ctx = new Diceros.LinePath();
+
+  /** @type {CanvasRenderingContext2D} */
+  ctx;
 
   ctx.color = opt_color || this.color;
 
@@ -255,6 +257,7 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
     ctx.y = point.y - point.width;
     ctx.width = ctx.height = point.width * 2;
 
+    /** @type {Diceros.LinePath} */
     return ctx;
   } else if (data.length === 2) {
     point = data[0];
@@ -294,6 +297,7 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
     ctx.width = maxX - minX;
     ctx.height = maxY - minY;
 
+    /** @type {Diceros.LinePath} */
     return ctx;
   }
 
@@ -403,6 +407,7 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
   ctx.width = maxX - minX;
   ctx.height = maxY - minY;
 
+  /** @type {Diceros.LinePath} */
   return minX === Infinity ? null : ctx;
 };
 
@@ -741,7 +746,7 @@ Diceros.BezierAGG.prototype.optimize = function(param) {
  * @param {Diceros.Point} p0 ベジェ曲線上の点1.
  * @param {Diceros.Point} p1 ベジェ曲線上の点2.
  * @param {Diceros.Point} p2 ベジェ曲線上の点3.
- * @return {boolean} 省略可能ならばtrueを返す.
+ * @return {!{removal: boolean}} 削除可能ならば removal は true となる.
  * curveCtrlPoints... 制御点
  * ctrlPoints... ベジェ曲線上の点
  */
@@ -752,14 +757,16 @@ Diceros.BezierAGG.prototype.checkRemoval = function(dist, p0, p1, p2, cp00, cp01
   if (t === 0 || t === 1) {
     return {removal: false};
   }
-  var cp02 = {
-    x: p0.x + (cp00.x - p0.x) / t ,
-    y: p0.y + (cp00.y - p0.y) / t
-  };
-  var cp12 = {
-    x: p2.x + (cp11.x - p2.x) / (1 / t),
-    y: p2.y + (cp11.y - p2.y) / (1 / t)
-  };
+  var cp02 = new Diceros.Point(
+    p0.x + (cp00.x - p0.x) / t,
+    p0.y + (cp00.y - p0.y) / t,
+    null
+  );
+  var cp12 = new Diceros.Point(
+    p2.x + (cp11.x - p2.x) / (1 / t),
+    p2.y + (cp11.y - p2.y) / (1 / t),
+    null
+  );
   var p3 = this.getBezierPoint_(cp02, cp12, t);
   var p4 = this.getBezierPoint_(cp00, p3, t);
   var p5 = this.getBezierPoint_(p3, cp11, t);

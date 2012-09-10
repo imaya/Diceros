@@ -19,7 +19,7 @@ goog.require('Diceros.util');
 goog.require('Diceros.Window');
 goog.require('Diceros.LayerType');
 
-goog.scope(function(){
+goog.scope(function() {
 /**
  * レイヤー制御ウィンドウクラス
  *
@@ -114,7 +114,6 @@ Diceros.LayerWindow.prototype.createToolbar = function() {
     if (obj) {
       item = new goog.ui.MenuItem(obj.label);
       item.setValue(obj.type);
-
       goog.events.listen(
         item,
         goog.ui.Component.EventType.ACTION,
