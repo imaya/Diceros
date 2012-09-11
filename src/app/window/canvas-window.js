@@ -78,6 +78,10 @@ function(app, index, opt_width, opt_height) {
    * @type {Object}
    */
   this.tempctx = app.makeCanvas(app.width, app.height).getContext('2d');
+
+  // line buffer
+  Diceros.BezierAGG.BufferCanvas.width = this.width;
+  Diceros.BezierAGG.BufferCanvas.height = this.height;
 };
 goog.inherits(
   Diceros.CanvasWindow,

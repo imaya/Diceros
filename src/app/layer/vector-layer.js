@@ -360,6 +360,11 @@ Diceros.VectorLayer.prototype.handleEventDelete = function(event) {
         this.refreshCurrentLine();
       }
       break;
+    // MOVE
+    case goog.events.EventType.TOUCHMOVE: /* FALLTHROUGH */
+    case goog.events.EventType.MOUSEMOVE:
+      this.updateCursor(event);
+      break;
   }
 };
 
@@ -570,6 +575,7 @@ Diceros.VectorLayer.prototype.drawCtrlPoint = function(opt_drawIndex) {
 
   // XXX: クリアではなくオーバーレイ自体を表示/非表示でも良いかも知れない
   overlay.clearRect(0, 0, this.app.width, this.app.height);
+  overlay.save();
 
   // 全ての線を描画するか,特定の線のみ描画するか
   if (typeof opt_drawIndex === 'number') {
@@ -577,6 +583,7 @@ Diceros.VectorLayer.prototype.drawCtrlPoint = function(opt_drawIndex) {
     if (path) {
       path.draw(overlay);
     }
+    overlay.beginPath();
     this.drawCtrlPointImpl_(overlay, opt_drawIndex);
   } else {
     if (this.currentCtrlPoint) {
@@ -586,10 +593,17 @@ Diceros.VectorLayer.prototype.drawCtrlPoint = function(opt_drawIndex) {
         path.draw(overlay);
       }
     }
+    overlay.beginPath();
     for (i = 0, il = this.lines.length; i < il; i++) {
       this.drawCtrlPointImpl_(overlay, i);
     }
   }
+
+  overlay.strokeStyle = 'rgb(0,0,255)'; // XXX: magic number
+  overlay.fillStyle = 'rgb(255,255,255)'; // XXX: magic number
+  overlay.fill();
+  overlay.stroke();
+  overlay.restore();
 };
 
 
@@ -606,17 +620,12 @@ function(ctx, lineIndex) {
       drawPoint;
 
   // 制御点の描画
-  ctx.beginPath();
-  ctx.strokeStyle = 'rgb(0,0,255)'; // XXX: magic number
-  ctx.fillStyle = 'rgb(255,255,255)'; // XXX: magic number
   for (var i = 0, l = ctrlPoints.length; i < l; i++) {
     drawPoint = ctrlPoints[i];
 
     ctx.moveTo(drawPoint.x + width, drawPoint.y);
     ctx.arc(drawPoint.x, drawPoint.y, width, 0, 7, false);
   }
-  ctx.fill();
-  ctx.stroke();
 };
 
 

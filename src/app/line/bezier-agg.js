@@ -720,11 +720,11 @@ Diceros.BezierAGG.prototype.optimize = function(param) {
   }
 
   for (i = 0; i < ctrlPoints.length - 2;) {
-    optimizeValue = this.checkRemoval(
-      param,
+    optimizeValue = this.checkline(
       ctrlPoints[i], ctrlPoints[i+1], ctrlPoints[i+2],
       curvePoints[i][0], curvePoints[i][1],
-      curvePoints[i+1][0], curvePoints[i+1][1]
+      curvePoints[i+1][0], curvePoints[i+1][1],
+      param
     );
     if (optimizeValue.removal) {
       ctrlPoints.splice(i + 1, 1);
@@ -732,7 +732,7 @@ Diceros.BezierAGG.prototype.optimize = function(param) {
       curvePoints[i][0] = optimizeValue.newCtrlPoint1;
       curvePoints[i][1] = optimizeValue.newCtrlPoint2;
     } else {
-      i++
+      i++;
     }
   }
 
@@ -750,28 +750,49 @@ Diceros.BezierAGG.prototype.optimize = function(param) {
  * curveCtrlPoints... 制御点
  * ctrlPoints... ベジェ曲線上の点
  */
-Diceros.BezierAGG.prototype.checkRemoval = function(dist, p0, p1, p2, cp00, cp01, cp10, cp11) {
+Diceros.BezierAGG.prototype.checkRemoval =
+function(dist, p0, p1, p2, cp00, cp01, cp10, cp11) {
+  /** @type {number} */
   var edge0 = this.pythagorean_(p1, cp01);
+  /** @type {number} */
   var edge1 = this.pythagorean_(p1, cp10);
+  /** @type {number} */
   var t = edge0 === 0 ? 0 : edge0 / (edge0 + edge1);
+  /** @type {Diceros.Point} */
+  var cp02;
+  /** @type {Diceros.Point} */
+  var cp12;
+  /** @type {Diceros.Point} */
+  var p3;
+  /** @type {Diceros.Point} */
+  var p4;
+  /** @type {Diceros.Point} */
+  var p5;
+  /** @type {Diceros.Point} */
+  var p6;
+  /** @type {!{removal: boolean}} */
+  var removal;
+
+  // invalid parameter
   if (t === 0 || t === 1) {
     return {removal: false};
   }
-  var cp02 = new Diceros.Point(
+
+  cp02 = new Diceros.Point(
     p0.x + (cp00.x - p0.x) / t,
     p0.y + (cp00.y - p0.y) / t,
     null
   );
-  var cp12 = new Diceros.Point(
+  cp12 = new Diceros.Point(
     p2.x + (cp11.x - p2.x) / (1 / t),
     p2.y + (cp11.y - p2.y) / (1 / t),
     null
   );
-  var p3 = this.getBezierPoint_(cp02, cp12, t);
-  var p4 = this.getBezierPoint_(cp00, p3, t);
-  var p5 = this.getBezierPoint_(p3, cp11, t);
-  var p6 = this.getBezierPoint_(p4, p5, t);
-  var removal;
+
+  p3 = this.getBezierPoint_(cp02, cp12, t);
+  p4 = this.getBezierPoint_(cp00, p3, t);
+  p5 = this.getBezierPoint_(p3, cp11, t);
+  p6 = this.getBezierPoint_(p4, p5, t);
 
   // TODO: width も t:1-s に収まっているか調べる
   removal =
@@ -786,14 +807,25 @@ Diceros.BezierAGG.prototype.checkRemoval = function(dist, p0, p1, p2, cp00, cp01
   };
 };
 
+/**
+ * p1-p2, p3-p4 の交点を返す.
+ * @param {Diceros.Point} p0 点1.
+ * @param {Diceros.Point} p1 点2.
+ * @param {Diceros.Point} p2 点3.
+ * @param {Diceros.Point} p3 点4.
+ * @return {Diceros.Point} 交点.
+ */
 Diceros.BezierAGG.prototype.calcCrossPoint = function(p0, p1, p2, p3) {
+  /** @type {number} */
   var s1 = ((p3.x - p2.x) * (p0.y - p2.y) - (p3.y - p2.y) * (p0.x - p2.x)) / 2;
+  /** @type {number} */
   var s2 = ((p3.x - p2.x) * (p2.y - p1.y) - (p3.y - p2.y) * (p2.x - p1.x)) / 2;
 
-  return {
-    x: p0.x + (p1.x - p0.x) * s1 / (s1 + s2),
-    y: p0.y + (p1.y - p0.y) * s1 / (s1 + s2)
-  };
+  return new Diceros.Point(
+    p0.x + (p1.x - p0.x) * s1 / (s1 + s2),
+    p0.y + (p1.y - p0.y) * s1 / (s1 + s2),
+    null
+  );
 };
 
 /**
@@ -805,8 +837,7 @@ Diceros.BezierAGG.prototype.calcCrossPoint = function(p0, p1, p2, p3) {
  * @return {Diceros.Point} s, e を t:1-t で分割した点.
  * @private
  */
-Diceros.BezierAGG.prototype.getBezierPoint_ =
-function(s, e, t, opt_width) {
+Diceros.BezierAGG.prototype.getBezierPoint_ = function(s, e, t, opt_width) {
   return new Diceros.Point(
     s.x + (e.x - s.x) * t,
     s.y + (e.y - s.y) * t,
@@ -824,8 +855,7 @@ function(s, e, t, opt_width) {
  * @return {Array} 3次ベジェ曲線の2つの制御点を配列で返す.
  * @private
  */
-Diceros.BezierAGG.prototype.convertBezier_ =
-function(s, c1, e) {
+Diceros.BezierAGG.prototype.convertBezier_ = function(s, c1, e) {
   return [
     new Diceros.Point(
       (s.x + c1.x * 2) / 3,
@@ -848,14 +878,139 @@ function(s, c1, e) {
  * @return {number} p1, p2 を両端とする線分の長さ.
  * @private
  */
-Diceros.BezierAGG.prototype.pythagorean_ =
-function(p1, p2) {
+Diceros.BezierAGG.prototype.pythagorean_ = function(p1, p2) {
   return Math.sqrt(
     Math.pow(p1.x - p2.x, 2) +
     Math.pow(p1.y - p2.y, 2)
   );
 };
 
+var tmpCanvas = Diceros.BezierAGG.BufferCanvas = document.createElement('canvas');
+
+/**
+ * p1 が p0, p1 の曲線上にあり、省略可能かどうか判別する.
+ * @param {Diceros.Point} p0 始点.
+ * @param {Diceros.Point} p1 中継点.
+ * @param {Diceros.Point} p2 終点.
+ * @param {Diceros.Point} cp00 始点-中継点間の制御点1.
+ * @param {Diceros.Point} cp01 始点-中継点間の制御点2.
+ * @param {Diceros.Point} cp10 中継点-終点間の制御点1.
+ * @param {Diceros.Point} cp11 中継点-終点間の制御点1.
+ * @param {number} width 判別時のベジェ曲線の閾値.
+ * @return {Object} 省略可能ならば removal プロパティに true がはいり、
+ *     newControlPoint1, newControlPoint2 プロパティに新しい制御点がはいる.
+ */
+Diceros.BezierAGG.prototype.checkline = function(p0, p1, p2, cp00, cp01, cp10, cp11, width) {
+  /** @type {CanvasRenderingContext2D} */
+  var ctx = tmpCanvas.getContext('2d');
+  /** @type {number} */
+  var edge0 = this.pythagorean_(p1, cp01);
+  /** @type {number} */
+  var edge1 = this.pythagorean_(p1, cp10);
+  /** @type {number} */
+  var t = edge0 === 0 ? 0 : edge0 / (edge0 + edge1);
+  /** @type {Diceros.Point} */
+  var cp02;
+  /** @type {Diceros.Point} */
+  var cp12;
+  /** @type {Diceros.Point} */
+  var tp00 = this.splitBezier(p0, p1, cp00, cp01, 0.25);
+  /** @type {Diceros.Point} */
+  var tp01 = this.splitBezier(p0, p1, cp00, cp01, 0.50);
+  /** @type {Diceros.Point} */
+  var tp02 = this.splitBezier(p0, p1, cp00, cp01, 0.75);
+  /** @type {Diceros.Point} */
+  var tp10 = this.splitBezier(p1, p2, cp10, cp11, 0.25);
+  /** @type {Diceros.Point} */
+  var tp11 = this.splitBezier(p1, p2, cp10, cp11, 0.50);
+  /** @type {Diceros.Point} */
+  var tp12 = this.splitBezier(p1, p2, cp10, cp11, 0.75);
+  /** @type {number} */
+  var radius;
+
+  // invalid parameter
+  if (t === 0 || t === 1) {
+    return {removal: false};
+  }
+
+  cp02 = new Diceros.Point(
+    p0.x + (cp00.x - p0.x) / t,
+    p0.y + (cp00.y - p0.y) / t,
+    null
+  );
+  cp12 = new Diceros.Point(
+    p2.x + (cp11.x - p2.x) / (1 / t),
+    p2.y + (cp11.y - p2.y) / (1 / t),
+    null
+  );
+
+  minX = Math.min(p0.x, p1.x, p2.x, cp00.x, cp01.x, cp02.x, cp10.x, cp11.x, cp12.x) - width;
+  minY = Math.min(p0.y, p1.y, p2.y, cp00.y, cp01.y, cp02.y, cp10.y, cp11.y, cp12.y) - width;
+  maxX = Math.max(p0.x, p1.x, p2.x, cp00.x, cp01.x, cp02.x, cp10.x, cp11.x, cp12.x) + width;
+  maxY = Math.max(p0.y, p1.y, p2.y, cp00.y, cp01.y, cp02.y, cp10.y, cp11.y, cp12.y) + width;
+
+  radius = Math.atan2(cp02.y - p0.y, cp02.x - p0.x);
+  while (radius < Math.PI / 2) {
+    radius += Math.PI * 2;
+  }
+  ctx.beginPath();
+  ctx.moveTo(
+    p0.x + width * Math.cos(radius - Math.PI / 2),
+    p0.y + width * Math.sin(radius - Math.PI / 2)
+  );
+  ctx.arc(p0.x, p0.y, width, radius - Math.PI / 2, radius + Math.PI / 2, true);
+  radius = Math.atan2(p2.y - cp12.y, p2.x - cp12.x);
+  ctx.lineTo(
+    p2.x + width * Math.cos(radius + Math.PI / 2),
+    p2.y + width * Math.sin(radius + Math.PI / 2)
+  );
+  ctx.arc(p2.x, p2.y, width, radius + Math.PI / 2, radius - Math.PI / 2, true);
+  ctx.closePath();
+
+  if (
+    ctx.isPointInPath(tp00.x, tp00.y) &&
+    ctx.isPointInPath(tp01.x, tp01.y) &&
+    ctx.isPointInPath(tp02.x, tp02.y) &&
+    ctx.isPointInPath(p1.x, p1.y) &&
+    ctx.isPointInPath(tp10.x, tp10.y) &&
+    ctx.isPointInPath(tp11.x, tp11.y) &&
+    ctx.isPointInPath(tp12.x, tp12.y)
+  ) {
+    return {
+      removal: true,
+      newCtrlPoint1: cp02,
+      newCtrlPoint2: cp12
+    };
+  } else {
+    return {
+      removal: false
+    };
+  }
+};
+
+/**
+ * ベジェ曲線を分割する点を返す.
+ * @param {Diceros.Point} p0 start point.
+ * @param {Diceros.Point} p1 end point.
+ * @param {Diceros.Point} cp0 control point 1.
+ * @param {Diceros.Point} cp1 control point 2.
+ * @param {number} t bezier parameter.
+ * @return {Diceros.Point} ベジェ曲線を t:1-t に分割する点
+ */
+Diceros.BezierAGG.prototype.splitBezier = function (p0, p1, cp0, cp1, t) {
+  /** @type {Diceros.Point} */
+  var cp00 = this.getBezierPoint_(p0, cp0, t);
+  /** @type {Diceros.Point} */
+  var cp01 = this.getBezierPoint_(cp0, cp1, t);
+  /** @type {Diceros.Point} */
+  var cp11 = this.getBezierPoint_(cp1, p1, t);
+  /** @type {Diceros.Point} */
+  var cp0001 = this.getBezierPoint_(cp00, cp01, t);
+  /** @type {Diceros.Point} */
+  var cp0111 = this.getBezierPoint_(cp01, cp11, t);
+
+  return this.getBezierPoint_(cp0001, cp0111, t);
+};
 
 // end of scope
 });
