@@ -22,20 +22,10 @@
   <target name="deps" depends="prebuild" description="依存関係を解決する deps.js を作成する">
     <exec dir="." executable="python" failonerror="true">
       <arg line="${vendor}/google-closure-library/closure/bin/build/depswriter.py"/>
-      <arg line="--root_with_prefix=&quot;${src}/app ../../../../src/app&quot;"/>
+      <arg line="--root_with_prefix=&quot;${src}/app ../../../../${src}/app&quot;"/>
+      <arg line="--root_with_prefix=&quot;${vendor}/base64.js/src ../../../../${vendor}/base64.js/src&quot;"/>
+      <arg line="--root_with_prefix=&quot;${vendor}/goog.ui.resizable ../../../../${vendor}/goog.ui.resizable&quot;"/>
       <arg line="--output_file=${bin}/deps.js "/>
-    </exec>
-  </target>
-
-  <!-- combine.js のビルド -->
-  <target name="combine" depends="prebuild" description="利用するJavaScriptファイルを全てまとめて combine.js を作成する">
-    <exec dir="." executable="python" failonerror="true">
-      <arg line="${vendor}/google-closure-library/closure/bin/build/closurebuilder.py"/>
-      <arg line="--root=${vendor}/google-closure-library/"/>
-      <arg line="--root=${src}/app"/>
-      <arg line="--namespace=Diceros.Main"/>
-      <arg line="--output_mode=script"/>
-      <arg line="--output_file=${bin}/combine.js"/>
     </exec>
   </target>
 
@@ -46,13 +36,15 @@
       <arg line="-c ${vendor}/google-closure-compiler/compiler.jar"/>
       <arg line="-f &quot;--compilation_level=ADVANCED_OPTIMIZATIONS&quot;"/>
       <arg line="-f &quot;--externs=${src}/app/externs.js&quot;"/>
-
+      <arg line="-f &quot;--externs=externs/googlepickerexterns.js&quot;"/>
+      <arg line="-f &quot;--externs=externs/gapi.js&quot;"/>
       <arg line="-f &quot;--warning_level=VERBOSE&quot;"/>
       <arg line="-f &quot;--output_wrapper='(function() {%output%}).call(this);'&quot;"/>
       <arg line="-f &quot;--summary_detail_level=3&quot;"/>
       <arg line="-f &quot;--language_in=ECMASCRIPT5_STRICT&quot;"/>
-
       <arg line="--root=${vendor}/google-closure-library"/>
+      <arg line="--root=${vendor}/base64.js"/>
+      <arg line="--root=${vendor}/goog.ui.resizable"/>
       <arg line="--root=${src}/app"/>
       <arg line="--namespace=Diceros.Main"/>
       <arg line="-o compiled"/>
@@ -67,14 +59,16 @@
       <arg line="-c ${vendor}/google-closure-compiler/compiler.jar"/>
       <arg line="-f &quot;--compilation_level=ADVANCED_OPTIMIZATIONS&quot;"/>
       <arg line="-f &quot;--externs=${src}/app/externs.js&quot;"/>
+      <arg line="-f &quot;--externs=externs/googlepickerexterns.js&quot;"/>
+      <arg line="-f &quot;--externs=externs/gapi.js&quot;"/>
       <arg line="-f &quot;--define=goog.DEBUG=false&quot;"/>
-
       <arg line="-f &quot;--warning_level=VERBOSE&quot;"/>
       <arg line="-f &quot;--output_wrapper='(function() {%output%}).call(this);'&quot;"/>
       <arg line="-f &quot;--summary_detail_level=3&quot;"/>
       <arg line="-f &quot;--language_in=ECMASCRIPT5_STRICT&quot;"/>
-
       <arg line="--root=${vendor}/google-closure-library"/>
+      <arg line="--root=${vendor}/base64.js"/>
+      <arg line="--root=${vendor}/goog.ui.resizable"/>
       <arg line="--root=${src}/app"/>
       <arg line="--namespace=Diceros.Main"/>
       <arg line="-o compiled"/>
@@ -83,7 +77,7 @@
   </target>
 
   <!-- 全て作成 -->
-  <target name="all" depends="deps,combine,debug,release"></target>
+  <target name="all" depends="deps,debug,release"/>
 
   <!--  削除 -->
   <target name="clean">
@@ -91,5 +85,5 @@
   </target>
 
   <!-- リビルド -->
-  <target name="rebuild" depends="clean,all"></target>
+  <target name="rebuild" depends="clean,all"/>
 </project>

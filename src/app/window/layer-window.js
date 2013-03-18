@@ -188,12 +188,12 @@ Diceros.LayerWindow.prototype.refresh = function() {
     Diceros.util.data(li, 'layerIndex', i);
     goog.events.listen(checkbox, goog.events.EventType.CLICK,
       function(event){
-        var parent = this.parentNode,
-            index = Diceros.util.data(
-              parent,
-              'layerIndex'
-            ),
-            layer = canvasWindow.layers[index];
+        /** @type {Element} */
+        var parent = this.parentNode;
+        /** @type {number} */
+        var index = Diceros.util.data(parent, 'layerIndex');
+        /** @type {Diceros.Layer} */
+        var layer = canvasWindow.layers[index];
 
         if (layer.visible) {
           layer.hide();
@@ -207,10 +207,8 @@ Diceros.LayerWindow.prototype.refresh = function() {
     goog.events.listen(li, goog.events.EventType.CLICK,
       function(event) {
         canvasWindow.selectLayer(
-          Diceros.util.data(
-            this,
-            'layerIndex'
-          )
+          /** @type {number} */
+          (Diceros.util.data(this, 'layerIndex'))
         );
         self.refresh();
       }

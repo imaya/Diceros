@@ -55,6 +55,7 @@ Diceros.RasterLayer.prototype.event = function(event) {
       break;
     case goog.events.EventType.KEYUP:
       break;
+    case goog.events.EventType.MSPOINTERMOVE: /* FALLTHROUGH */
     case goog.events.EventType.TOUCHMOVE: /* FALLTHROUGH */
     case goog.events.EventType.MOUSEMOVE:
       // ドラッグ中
@@ -64,9 +65,10 @@ Diceros.RasterLayer.prototype.event = function(event) {
       }
 
       break;
+    case goog.events.EventType.MSPOINTERDOWN: /* FALLTHROUGH */
     case goog.events.EventType.TOUCHSTART: /* FALLTHROUGH */
     case goog.events.EventType.MOUSEDOWN:
-      var line, point, beforeLine; // XXX
+      var line, point; // XXX
       // 線のセットアップ
       line = this.currentLine = new Diceros.BezierAGG(this.app.toolbar.colorButton.getSelectedColor());
       point = Diceros.Point.createFromEvent(event, this.getCurrentPenSize()); // XXX
@@ -76,6 +78,7 @@ Diceros.RasterLayer.prototype.event = function(event) {
       this.refreshCurrentLineOutline();
 
       break;
+    case goog.events.EventType.MSPOINTERUP: /* FALLTHROUGH */
     case goog.events.EventType.TOUCHEND: /* FALLTHROUGH */
     case goog.events.EventType.MOUSEUP:
       this.drawNewLine();
@@ -147,6 +150,28 @@ Diceros.RasterLayer.prototype.sampling = function(event) {
   currentLine.addControlPoint(point);
 };
 
+Diceros.RasterLayer.prototype.toObject = function() {
+  return {
+    'type': this.name,
+    'data': this.canvas.toDataURL()
+  }
+};
+
+Diceros.RasterLayer.fromObject = function(app, obj) {
+  var layer;
+  var img;
+
+  layer = new Diceros.RasterLayer(app);
+  layer.init();
+
+  img = new Image();
+  img.onload = function() {
+    layer.ctx.drawImage(img, 0, 0);
+  };
+  img.src = obj['data'];
+
+  return layer;
+};
 
 });
 /* vim:set expandtab ts=2 sw=2 tw=80: */

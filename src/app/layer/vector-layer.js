@@ -62,29 +62,32 @@ Diceros.VectorLayer = function(app) {
    */
   this.frontBuffer =
   /** @type {CanvasRenderingContext2D} */
-    this.app.makeCanvas(this.app.width, this.app.height).getContext('2d');
+    (this.app.makeCanvas(this.app.width, this.app.height).getContext('2d'));
   /**
    * 編集している線よりも後ろの線を記憶しておくバッファ
    * @type {CanvasRenderingContext2D}
    */
   this.backBuffer =
     /** @type {CanvasRenderingContext2D} */
-    this.app.makeCanvas(this.app.width, this.app.height).getContext('2d');
-  /**
-   * オーバーレイのコンテキスト.
-   * @type {CanvasRenderingContext2D}
-   */
-  this.overlay = this.app.windows[this.app.currentCanvasWindow].overlay.ctx;
+    (this.app.makeCanvas(this.app.width, this.app.height).getContext('2d'));
   /**
    * 描画アウトライン用の一時パス.
    * @type {Diceros.LinePath}
    */
   this.outlinePath;
+  /**
+   * @type {Array.<number>}
+   */
+  this.freeList = []
 };
 goog.inherits(
   Diceros.VectorLayer,
   Diceros.Layer
 );
+
+Diceros.VectorLayer.prototype.getOverlayContext = function() {
+  return this.app.windows[this.app.currentCanvasWindow].overlay.ctx;
+};
 
 /**
  * 編集モード
@@ -104,6 +107,10 @@ Diceros.VectorLayer.Mode = {
 Diceros.VectorLayer.prototype.event = function(event) {
   var canvas = this.canvas,
       ctx = this.ctx;
+  /** @type {number} */
+  var i;
+  /** @type {number} */
+  var il;
 
   if (canvas === null || ctx === null) {
     throw 'canvas not initialized';
@@ -148,6 +155,17 @@ Diceros.VectorLayer.prototype.event = function(event) {
   if (this.mode === Diceros.VectorLayer.Mode.DELETE) {
     this.drawCtrlPoint();
   }
+
+  // free
+  this.freeList = this.freeList.sort(function(a, b) { return a < b ? 1 : a > b ? - 1 : 0; });
+  for (i = 0, il = this.freeList.length; i < il; ++i) {
+    this.lines.splice(this.freeList[i], 1);
+    this.paths.splice(this.freeList[i], 1);
+  }
+  this.freeList = [];
+  if (this.lines.length === 0) {
+    this.currentCtrlPoint = null;
+  }
 };
 
 // reset
@@ -161,7 +179,7 @@ Diceros.VectorLayer.prototype.switchMode = function(mode) {
       this.drawCtrlPoint();
       break;
   }
-}
+};
 
 /**
  * @param {goog.events.BrowserEvent} event browser event.
@@ -355,6 +373,10 @@ Diceros.VectorLayer.prototype.handleEventDelete = function(event) {
           Diceros.Point.createFromEvent(event, width, true)
         );
 
+        if (line.getCtrlPoints().length === 0) {
+          this.freeList.push(this.currentLine);
+        }
+
         // 線の選択
         this.selectLine();
         this.refreshCurrentLine();
@@ -364,6 +386,10 @@ Diceros.VectorLayer.prototype.handleEventDelete = function(event) {
     case goog.events.EventType.TOUCHMOVE: /* FALLTHROUGH */
     case goog.events.EventType.MOUSEMOVE:
       this.updateCursor(event);
+      break;
+    case goog.events.EventType.TOUCHEND: /* FALLTHROUGH */
+    case goog.events.EventType.MOUSEUP:
+      this.currentCtrlPoint = null;
       break;
   }
 };
@@ -392,7 +418,7 @@ Diceros.VectorLayer.prototype.drawNewline = function() {
   /** @type {Diceros.LinePath} */
   var path = this.outlinePath;
   /** @type {CanvasRenderingContext2D} */
-  var overlay = this.overlay;
+  var overlay = this.getOverlayContext();
 
   // optimization
   if (typeof line.optimize === 'function') {
@@ -423,7 +449,7 @@ Diceros.VectorLayer.prototype.drawOutline = function() {
   /** @type {Diceros.LinePath} */
   var path = this.outlinePath;
   /** @type {CanvasRenderingContext2D} */
-  var overlay = this.overlay;
+  var overlay = this.getOverlayContext();
 
   // clear before outline
   if (path) {
@@ -450,14 +476,14 @@ Diceros.VectorLayer.prototype.selectLine = function() {
   var ctx;
   /** @type {HTMLCanvasElement} */
   var canvas;
-  /** @type {number} */
-  var i;
-  /** @type {number} */
-  var il;
   /** @type {Array.<Diceros.LinePath>} */
   var paths = this.paths;
   /** @type {Diceros.LinePath} */
   var path;
+  /** @type {number} */
+  var i;
+  /** @type {number} */
+  var il;
 
   // back buffer
   ctx = this.backBuffer;
@@ -568,7 +594,7 @@ Diceros.VectorLayer.prototype.updateCursor = function(event) {
  * @param {number=} opt_drawIndex 描画する線.省略時は全ての線の制御点を描画.
  */
 Diceros.VectorLayer.prototype.drawCtrlPoint = function(opt_drawIndex) {
-  var overlay = this.overlay;
+  var overlay = this.getOverlayContext();
   var path;
   var i;
   var il;
@@ -634,7 +660,7 @@ function(ctx, lineIndex) {
  */
 Diceros.VectorLayer.prototype.clearCtrlPoint =
 function() {
-  var ctx = this.app.windows[this.app.currentCanvasWindow].overlay.ctx;
+  var ctx = this.getOverlayContext();
 
   ctx.clearRect(0, 0, this.app.width, this.app.height);
 };
@@ -685,6 +711,60 @@ Diceros.VectorLayer.prototype.checkCtrlPoint = function(x, y, opt_width) {
   }
 
   return null;
+};
+
+Diceros.VectorLayer.prototype.draw = function() {
+  this.selectLine();
+  this.refreshCurrentLine();
+};
+
+Diceros.VectorLayer.prototype.toObject = function() {
+  return {
+    'type': this.name,
+    'data': this.lines.map(
+      function(line) {
+        return line.toObject();
+      }
+    )
+  };
+};
+
+Diceros.VectorLayer.fromObject = function(app, obj) {
+  var layer;
+  var lines;
+  var paths;
+  var data = obj['data'];
+  var path;
+  var i;
+  var il;
+
+  layer = new Diceros.VectorLayer(app);
+  lines = new Array(data.length);
+  paths = new Array(data.length);
+
+  layer.init();
+
+  for (i = 0, il = data.length; i < il; ++i) {
+    switch (data[i]['type']) {
+      case 'BezierAGG':
+        lines[i] = Diceros.BezierAGG.fromObject(data[i]);
+        paths[i] = lines[i].path();
+        break;
+      default:
+        throw new Error('unknown line type');
+    }
+  }
+
+  layer.lines = lines;
+  layer.paths = paths;
+
+  if (lines.length > 0) {
+    layer.currentLine = 0;
+    layer.selectLine();
+    layer.refreshCurrentLine();
+  }
+
+  return layer;
 };
 
 // end of scope

@@ -43,21 +43,18 @@ Diceros.Layer = function(app) {
  * レイヤーの初期化を行う
  */
 Diceros.Layer.prototype.init = function() {
-  if (typeof this.app.currentCanvasWindow !== 'number') {
-    throw 'current canvas window is unknown';
-  }
-
   this.canvas = this.app.makeCanvas(this.app.width, this.app.height);
   this.ctx =
     /** @type {CanvasRenderingContext2D} */
-    this.canvas.getContext('2d');
+    (this.canvas.getContext('2d'));
 
   goog.style.setStyle(this.canvas, 'position', 'absolute');
 
-  goog.dom.insertSiblingBefore(
-    this.canvas,
-    this.app.getCurrentCanvasWindow().overlay.canvas
-  );
+
+};
+
+Diceros.Layer.prototype.getCanvas = function() {
+  return this.canvas;
 };
 
 

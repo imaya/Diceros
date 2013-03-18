@@ -21,14 +21,11 @@ Diceros.Line = function(opt_color) {
    */
   this.ctrlPoints = [];
 
-  /** @type {string} */
-  opt_color;
-
   /**
-   * @type {string}
+   * @type {(string|undefined)}
    */
   this.color = opt_color;
-}
+};
 
 
 /**

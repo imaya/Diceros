@@ -104,6 +104,10 @@ Diceros.CanvasWindow.prototype.decorateInternal =
 function(element) {
   goog.base(this, 'decorateInternal', element);
 
+  var layers = this.layers;
+  var i;
+  var il;
+
   goog.dom.append(this.app.target, this.element);
 
   // キャンバスを重ねる基本要素
@@ -111,6 +115,14 @@ function(element) {
   goog.style.setStyle(this.canvasBase, 'position', 'relative');
   goog.dom.append(this.element, this.canvasBase);
   goog.dom.append(this.canvasBase, this.overlay.canvas);
+
+  for (i = 0, il = layers.length; i < il; ++i) {
+    // canvas の配置
+    goog.dom.insertSiblingBefore(
+      layers[i].getCanvas(),
+      this.overlay.canvas
+    );
+  }
 
   // イベントの設定
   this.setEvent();
@@ -126,17 +138,58 @@ Diceros.CanvasWindow.prototype.createDom = function() {
 };
 
 /**
+ * @enum {number}
+ */
+Diceros.CanvasWindow.CaptureEventType = {
+  MOUSE: 0,
+  TOUCH: 1,
+  POINTER: 2
+};
+
+Diceros.CanvasWindow.prototype.setCaptureEventType = function(type) {
+  switch (type) {
+    case Diceros.CanvasWindow.CaptureEventType.MOUSE:
+      this.captureEventType = {
+        start: goog.events.EventType.MOUSEDOWN,
+        move: goog.events.EventType.MOUSEMOVE,
+        end: goog.events.EventType.MOUSEUP
+      };
+      break;
+    case Diceros.CanvasWindow.CaptureEventType.TOUCH:
+      this.captureEventType = {
+        start: goog.events.EventType.TOUCHSTART,
+        move: goog.events.EventType.TOUCHMOVE,
+        end: goog.events.EventType.TOUCHEND
+      };
+      break;
+    case Diceros.CanvasWindow.CaptureEventType.POINTER:
+      this.captureEventType = {
+        start: goog.events.EventType.MSPOINTERDOWN,
+        move: goog.events.EventType.MSPOINTERMOVE,
+        end: goog.events.EventType.MSPOINTERUP
+      };
+  }
+};
+
+/**
  * イベントの設定
  */
 Diceros.CanvasWindow.prototype.setEvent = function() {
   var self = this, canvasWindowEvent;
 
+  if (navigator.userAgent.indexOf('Android') !== -1) {
+    this.setCaptureEventType(Diceros.CanvasWindow.CaptureEventType.TOUCH);
+  } else if (window.navigator.msPointerEnabled) {
+    this.setCaptureEventType(Diceros.CanvasWindow.CaptureEventType.POINTER);
+  } else {
+    this.setCaptureEventType(Diceros.CanvasWindow.CaptureEventType.MOUSE);
+  }
+
   // XXX: クラス定数にするか？
   canvasWindowEvent = {};
 
   // move
-  canvasWindowEvent[goog.events.EventType.TOUCHMOVE] =
-  canvasWindowEvent[goog.events.EventType.MOUSEMOVE] = function(event) {
+  canvasWindowEvent[this.captureEventType.move] = function(event) {
     var layer = self.getCurrentLayer();
 
     event.event_.preventDefault();
@@ -150,8 +203,7 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
   };
 
   // start
-  canvasWindowEvent[goog.events.EventType.TOUCHSTART] =
-  canvasWindowEvent[goog.events.EventType.MOUSEDOWN] = function(event) {
+  canvasWindowEvent[this.captureEventType.start] = function(event) {
     var layer = self.getCurrentLayer();
 
     event.event_.preventDefault();
@@ -167,8 +219,7 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
   };
 
   // end
-  canvasWindowEvent[goog.events.EventType.TOUCHEND] =
-  canvasWindowEvent[goog.events.EventType.MOUSEUP] = function(event) {
+  canvasWindowEvent[this.captureEventType.end] = function(event) {
     var drag = self.drag, layer = self.getCurrentLayer();
 
     self.drag = false;
@@ -195,7 +246,7 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
     }
 
     // マウスが外れたときはマウスアップと同じ扱いにする
-    event.type = goog.events.EventType.MOUSEUP;
+    event.type = self.captureEventType.end;
     return canvasWindowEvent[event.type](event);
   };
 
@@ -245,6 +296,13 @@ Diceros.CanvasWindow.prototype.addLayer = function (type) {
   }
 
   newLayer.init();
+
+  // canvas の配置
+  goog.dom.insertSiblingBefore(
+    newLayer.getCanvas(),
+    this.overlay.canvas
+  );
+
   //goog.style.setStyle(newLayer.canvas, 'border', '1px solid black');
 
   this.layers.push(newLayer);
@@ -299,6 +357,60 @@ Diceros.CanvasWindow.prototype.checkCanvasArea = function(event) {
  */
 Diceros.CanvasWindow.prototype.getCurrentLayer = function() {
   return this.layers[this.currentLayer];
+};
+
+/**
+ * @return {Array.<Object>}
+ */
+Diceros.CanvasWindow.prototype.toObject = function() {
+  /** @type {Array.<Diceros.Layer>} */
+  var layers = this.layers;
+  /** @type {Array.<Object>} */
+  var obj = [];
+  /** @type {number} */
+  var i;
+  /** @type {number} */
+  var il;
+
+  for (i = 0, il = layers.length; i < il; ++i) {
+    obj[i] = layers[i].toObject();
+  }
+
+  return obj
+};
+
+/**
+ * @param {Diceros.Application} app
+ * @param {number} index
+ * @param {Object} obj
+ * @param {number=} opt_width
+ * @param {number=} opt_height
+ * @return {Diceros.CanvasWindow}
+ */
+Diceros.CanvasWindow.fromObject = function(app, index, obj, opt_width, opt_height) {
+  /** @type {Diceros.CanvasWindow} */
+  var cw = new Diceros.CanvasWindow(app, index, opt_width, opt_height);
+  /** @type {Array.<Diceros.Layer>} */
+  var layers = cw.layers;
+  /** @type {number} */
+  var i;
+  /** @type {number} */
+  var il;
+
+  for (i = 0, il = obj.length; i < il; ++i) {
+     switch (obj[i]['type']) {
+       case 'VectorLayer':
+         layers[i] = Diceros.VectorLayer.fromObject(app, obj[i]);
+         break;
+       case 'RasterLayer':
+         layers[i] = Diceros.RasterLayer.fromObject(app, obj[i]);
+         break;
+       default:
+         throw new Error('unknown layer type');
+     }
+  }
+
+  return cw;
 };
 
 });

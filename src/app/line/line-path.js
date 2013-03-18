@@ -4,6 +4,8 @@ goog.scope(function() {
 
 /**
  * @constructor
+ * // 継承していないが、CanvasRenderingContext2D のメソッドを受けるために偽装する
+ * @extends {CanvasRenderingContext2D}
  */
 Diceros.LinePath = function() {
   /** @type {Array.<number>} */
@@ -67,7 +69,7 @@ Diceros.LinePath.prototype.draw = function(ctx) {
 };
 
 /**
- * @type {Object.<string, number>}
+ * @type {!Object.<string, number>}
  */
 Diceros.LinePath.MethodTable = { // 0x00-0x7f
   // path 0x00-0x0f
@@ -87,7 +89,12 @@ Diceros.LinePath.MethodTable = { // 0x00-0x7f
 /**
  * @type {Array.<string>}
  */
-Diceros.LinePath.ReverseMethodTable = (function(table) {
+Diceros.LinePath.ReverseMethodTable = (
+/**
+ * @param {!Object.<string, number>} table
+ * @return {Array.<string>}
+ */
+function(table) {
   /** @type {Array.<string>} */
   var reverseTable = new Array(128); // 0x00-0x7f
   /** @type {number} */
@@ -134,7 +141,7 @@ Diceros.LinePath.ReverseMethodTable = (function(table) {
 })(Diceros.LinePath.MethodTable);
 
 /**
- * @type {Object.<string, number>}
+ * @type {!Object.<string, number>}
  */
 Diceros.LinePath.PropertyTable = { // 0x80-0xff
   // line 0x80-0x8f
@@ -144,7 +151,12 @@ Diceros.LinePath.PropertyTable = { // 0x80-0xff
 /**
  * @type {Array.<string>}
  */
-Diceros.LinePath.ReversePropertyTable = (function(table) {
+Diceros.LinePath.ReversePropertyTable = (
+/**
+ * @param {!Object.<string, number>} table
+ * @return {Array.<string>}
+ */
+function(table) {
   /** @type {Array.<string>} */
   var reverseTable = new Array(128); // 0x80-0xff
   /** @type {number} */

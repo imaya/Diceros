@@ -15,6 +15,10 @@ goog.require('Diceros.SizerWindow');
 goog.require('Diceros.WindowType');
 goog.require('Diceros.util');
 
+goog.require('imaya.ui.SplitPane');
+goog.require('imaya.ui.GoogleDriveLoadToolbarButton');
+goog.require('imaya.ui.GoogleDriveSaveToolbarButton');
+
 goog.require('goog.dom');
 goog.require('goog.events');
 goog.require('goog.math.Size');
@@ -94,6 +98,8 @@ Diceros.Application = function(opt_config) {
    * @type {goog.ui.Toolbar}
    */
   this.toolbar;
+  /** @type {Object} */
+  this.save;
 };
 
 /**
@@ -113,13 +119,31 @@ Diceros.Application.prototype.layout = function() {
   var layer, canvas, sizer,
       height = this.height - Diceros.util.scrollBarWidth(),
       layout = this.layoutPanels;
+  /** @type {Object} */
+  var obj;
 
   // ウィンドウの生成
   layer = this.addWindow(Diceros.WindowType.LAYER_WINDOW);
-  canvas = this.addWindow(Diceros.WindowType.CANVAS_WINDOW);
+  if (!this.save) {
+    canvas = this.addWindow(Diceros.WindowType.CANVAS_WINDOW);
+  } else {
+    // データからの読み込みの場合
+    obj = this.save;
+    canvas = Diceros.CanvasWindow.fromObject(
+      this,
+      this.windows.length,
+      obj
+    );
+    this.currentCanvasWindow = this.windows.length;
+    this.selectCanvasWindow(this.windows.length);
+    this.windows.push(canvas);
+  }
   sizer = this.addWindow(Diceros.WindowType.SIZER_WINDOW);
 
   // 配置
+
+  // ツールバー
+  this.createToolbar();
 
   // サイズとレイヤーウィンドウをツールパネルに
   layout.toolSplitPane = new goog.ui.SplitPane(
@@ -133,19 +157,18 @@ Diceros.Application.prototype.layout = function() {
   };
 
   // ツールパネルとキャンバスウィンドウの結合
-  layout.baseSplitPane = new goog.ui.SplitPane(
+  layout.baseSplitPane = new imaya.ui.SplitPane(
     canvas, layout.toolSplitPane,
-    goog.ui.SplitPane.Orientation.HORIZONTAL
+    imaya.ui.SplitPane.Orientation.HORIZONTAL
   );
   layout.baseSplitPane.setInitialSize(this.width - 150);
   layout.baseSplitPane.setContinuousResize(true);
-
-  // ツールバー
-  this.createToolbar();
+  layout.baseSplitPane.setSnapDirection(false);
+  layout.baseSplitPane.setHandleSize(30);
 
   // 適用
   layout.baseSplitPane.render(this.target);
-  layout.baseSplitPane.setSize(new goog.math.Size(this.width, this.height));
+  layout.baseSplitPane.setSize(new goog.math.Size(this.width, this.height - goog.style.getBorderBoxSize(this.toolbar.getElement()).height));
   layout.toolSplitPane.setSize(new goog.math.Size(layout.toolSplitPane.getFirstComponentSize().width, height));
 };
 
@@ -207,7 +230,7 @@ Diceros.Application.prototype.selectCanvasWindow = function(index) {
  * @return {Diceros.CanvasWindow} 現在のキャンバスウィンドウ.
  */
 Diceros.Application.prototype.getCurrentCanvasWindow = function() {
-  return /** @type {Diceros.CanvasWindow} */this.windows[this.currentCanvasWindow];
+  return /** @type {Diceros.CanvasWindow} */(this.windows[this.currentCanvasWindow]);
 };
 
 /**
@@ -215,7 +238,7 @@ Diceros.Application.prototype.getCurrentCanvasWindow = function() {
  * @return {Diceros.SizerWindow} 現在のサイズ調整ウィンドウ.
  */
 Diceros.Application.prototype.getCurrentSizerWindow = function() {
-  return /** @type {Diceros.SizerWindow} */ this.windows[this.sizerWindow];
+  return /** @type {Diceros.SizerWindow} */(this.windows[this.sizerWindow]);
 };
 
 /**
@@ -228,7 +251,7 @@ Diceros.Application.prototype.makeCanvas = function(width, height) {
   /** @type {HTMLCanvasElement} */
   var canvas =
     /** @type {HTMLCanvasElement} */
-    document.createElement('canvas');
+    (document.createElement('canvas'));
 
   canvas.width = width;
   canvas.height = height;
@@ -350,6 +373,10 @@ Diceros.Application.prototype.createToolbar = function() {
 
   goog.dom.classes.add(selector.getElement(), 'goog-toolbar-select');
 
+  //
+  this.appendSaveButton_(toolbar);
+  this.appendLoadButton_(toolbar);
+
   // rendering
   this.refreshToolbar();
   toolbar.render(this.target);
@@ -395,6 +422,71 @@ Diceros.Application.prototype.refreshToolbar = function() {
   // point optimization button
   toolbar.pointOptimize.setEnabled(isVector);
   */
+};
+
+/**
+ * @param {goog.ui.Toolbar} toolbar
+ * @private
+ */
+Diceros.Application.prototype.appendSaveButton_ = function(toolbar) {
+  /** @type {imaya.ui.GoogleDriveSaveToolbarButton} */
+  var button = new imaya.ui.GoogleDriveSaveToolbarButton('Save');
+  /** @type {Diceros.CanvasWindow} */
+  var cw = this.getCurrentCanvasWindow();
+
+  button.setClientId('663668731705.apps.googleusercontent.com');
+  button.setScope('https://www.googleapis.com/auth/drive');
+
+  // event handler
+  button.setCallback(function(token) {
+    button.save(Date.now() + '.json', JSON.stringify(cw.toObject()), 'application/json', function() {
+      // save done
+    });
+  });
+
+  toolbar.addChild(button, true);
+};
+
+/**
+ * @param {goog.ui.Toolbar} toolbar
+ * @private
+ */
+Diceros.Application.prototype.appendLoadButton_ = function(toolbar) {
+  /** @type {imaya.ui.GoogleDriveLoadToolbarButton} */
+  var button = new imaya.ui.GoogleDriveLoadToolbarButton('Load');
+  /** @type {Diceros.CanvasWindow} */
+  var cw = this.getCurrentCanvasWindow();
+
+  button.setClientId('663668731705.apps.googleusercontent.com');
+  button.setScope('https://www.googleapis.com/auth/drive');
+
+  // event handler
+  button.setCallback(function(data) {
+    // load done
+    this.refreshFromObject(JSON.parse(data));
+  }.bind(this));
+
+  toolbar.addChild(button, true);
+};
+
+Diceros.Application.prototype.refreshFromObject = function(obj) {
+  var width = this.width;
+  var height = this.height;
+  var target = this.target;
+
+  if (this.target) {
+    this.target.innerHTML = '';
+  }
+
+  // TODO
+  Object.keys(this).forEach(function(key) {
+    this[key] = null;
+  }.bind(this));
+
+  this.save = obj;
+
+  Diceros.Application.call(this, {'width': width, 'height': height});
+  this.render(target);
 };
 
 // end of scope

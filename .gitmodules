@@ -1,3 +1,6 @@
 [submodule "vendor/google-closure-library"]
 	path = vendor/google-closure-library
 	url = https://github.com/jarib/google-closure-library
+[submodule "vendor/base64.js"]
+	path = vendor/base64.js
+	url = git://github.com/imaya/base64.js.git

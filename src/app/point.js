@@ -63,6 +63,7 @@ Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
   if (ev.type.indexOf('touch') === 0) {
     x = ev.getBrowserEvent().touches[0].pageX - offset.x; // XXX
     y = ev.getBrowserEvent().touches[0].pageY - offset.y; // XXX
+
   // mouse
   } else {
     x = ev.getBrowserEvent().pageX - offset.x;
@@ -112,6 +113,9 @@ Diceros.Point.prototype.getPressure = function(opt_event) {
       if (typeof touchEvent['force'] === 'number') {
         return touchEvent['force'];
       }
+    // Pointer Events
+    } else if (opt_event.type.indexOf('pointer') !== -1) {
+      return browserEvent['pressure'];
     }
   }
 
