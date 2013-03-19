@@ -9,6 +9,7 @@ goog.require('goog.style');
 goog.require('Diceros.Window');
 goog.require('Diceros.VectorLayer');
 goog.require('Diceros.RasterLayer');
+goog.require('Diceros.SVGLayer');
 
 goog.scope(function(){
 
@@ -71,13 +72,6 @@ function(app, index, opt_width, opt_height) {
   this.overlay.canvas = app.makeCanvas(app.width, app.height);
   this.overlay.ctx = this.overlay.canvas.getContext('2d');
   goog.style.setStyle(this.overlay.canvas, 'position', 'absolute');
-
-  /**
-   * よろず作業用 canvas context
-   * 主にベクタレイヤでの線毎のImageDataオブジェクトを生成するなどに利用
-   * @type {Object}
-   */
-  this.tempctx = app.makeCanvas(app.width, app.height).getContext('2d');
 
   // line buffer
   Diceros.BezierAGG.BufferCanvas.width = this.width;
@@ -291,6 +285,9 @@ Diceros.CanvasWindow.prototype.addLayer = function (type) {
   case Diceros.LayerType.RASTER_LAYER:
     newLayer = new Diceros.RasterLayer(this.app);
     break;
+  case Diceros.LayerType.SVG_LAYER:
+    newLayer = new Diceros.SVGLayer(this.app);
+    break;
   default:
     throw 'unsupported layer class';
   }
@@ -404,6 +401,9 @@ Diceros.CanvasWindow.fromObject = function(app, index, obj, opt_width, opt_heigh
          break;
        case 'RasterLayer':
          layers[i] = Diceros.RasterLayer.fromObject(app, obj[i]);
+         break;
+       case 'SVGLayer':
+         layers[i] = Diceros.SVGLayer.fromObject(app, obj[i]);
          break;
        default:
          throw new Error('unknown layer type');

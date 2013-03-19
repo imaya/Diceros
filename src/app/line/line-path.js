@@ -68,6 +68,116 @@ Diceros.LinePath.prototype.draw = function(ctx) {
   ctx.restore();
 };
 
+Diceros.LinePath.prototype.drawToSVGPath = function(path) {
+  /** @type {number} */
+  var i;
+  /** @type {number} */
+  var il;
+  /** @type {Array.<number>} */
+  var sequence = this.sequence;
+  /** @type {number} */
+  var id;
+  /** @type {number} */
+  var length;
+  /** @type {Array.<number>} */
+  var args;
+  /** @type {string} */
+  var name;
+
+  var d = [];
+
+  path.removeAttribute('stroke');
+  path.removeAttribute('fill');
+  path.removeAttribute('stroke-width');
+
+  for (i = 0, il = this.pos; i < il;) {
+    id = sequence[i++];
+    length = sequence[i++];
+    args = sequence.slice(i, i += length);
+
+    // method call
+    if (id < 0x80) {
+      switch (Diceros.LinePath.ReverseMethodTable[id]) {
+        // path 0x00-0x0f
+        case 'beginPath':
+          break;
+        // line 0x10-0x1f
+        case 'lineTo':
+          d.push('L', args.join(' '));
+          break;
+        case 'bezierCurveTo':
+          d.push('C', args.join(' '));
+          break;
+        case 'arc':
+          d.push.apply(d, this.calcCanvasArcToSVGPath.apply(this, args.concat(d.length === 0)));
+          break;
+        case 'arcTo':
+          // TODO: not implemented
+          break;
+        // move 0x20-0x2f
+        case 'moveTo':
+          d.push('M', args.join(','));
+          break;
+        // draw 0x70-0x7f
+        case 'stroke':
+          path.setAttribute('stroke', this.color);
+          break;
+        case 'fill':
+          path.setAttribute('fill', this.color);
+          break;
+      }
+      // property set
+    } else {
+      switch (Diceros.LinePath.ReversePropertyTable[id & 0x7f]) {
+        case 'lineWidth':
+          path.setAttribute('stroke-width', args[0]);
+          break;
+      }
+    }
+  }
+
+  path.setAttribute('d', d.join(' '));
+};
+
+Diceros.LinePath.prototype.calcCanvasArcToSVGPath = function(x, y, radius, startAngle, endAngle, clockwise, isFirstPath) {
+  var deltaAngle = Math.abs(startAngle - endAngle);
+  var startX;
+  var startY;
+  var endX = x + Math.cos(endAngle) * radius;
+  var endY = y + Math.sin(endAngle) * radius;
+  var rot;
+  var sweep;
+  var isLong;
+  var result = [];
+
+  // アングルが同じ場合は描画するものがない
+  if (startAngle === endAngle) {
+    return result;
+  }
+
+  // 円の場合は半分ずつ描画する
+  if (deltaAngle >= 2 * Math.PI) {
+    result.push.apply(this, this.calcCanvasArcToSVGPath(x, y, radius, startAngle, startAngle + Math.PI, clockwise));
+    result.push.apply(this, this.calcCanvasArcToSVGPath(x, y, radius, startAngle + Math.PI, startAngle + 2 * Math.PI, clockwise));
+    result.push('M', endX, endY);
+
+    return result;
+  }
+
+  // パスの先頭だった場合はその場所まで移動し、そうでない場合は前のパスからの直線
+  startX = x + Math.cos(startAngle) * radius;
+  startY = y + Math.sin(startAngle) * radius;
+  result.push(isFirstPath ? 'M' : 'L', startX, startY);
+
+  // パスの描画
+  rot = deltaAngle * 180 / Math.PI; // sign, abs?
+  sweep = clockwise ? 0 : 1;
+  isLong = ((rot >= 180) === !!clockwise) ? 0 : 1;
+  result.push('A', radius, radius, rot, isLong, sweep, endX, endY);
+
+  return result;
+};
+
 /**
  * @type {!Object.<string, number>}
  */

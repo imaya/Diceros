@@ -6,7 +6,7 @@ goog.require('goog.object');
 goog.scope(function() {
 /**
  * ラスタレイヤー実装
- * @extends Diceros.Layer
+ * @extends {Diceros.Layer}
  * @constructor
  */
 Diceros.RasterLayer = function(app) {

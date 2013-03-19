@@ -4,6 +4,7 @@ goog.addDependency('../../../.././src/app/diceros.js', ['Diceros.Application'], 
 goog.addDependency('../../../.././src/app/layer/layer.js', ['Diceros.Layer'], ['goog.dom', 'goog.style']);
 goog.addDependency('../../../.././src/app/layer/layertype.js', ['Diceros.LayerType'], []);
 goog.addDependency('../../../.././src/app/layer/raster-layer.js', ['Diceros.RasterLayer'], ['Diceros.Layer', 'goog.object']);
+goog.addDependency('../../../.././src/app/layer/svg-layer.js', ['Diceros.SVGLayer'], ['Diceros.VectorLayer']);
 goog.addDependency('../../../.././src/app/layer/vector-layer.js', ['Diceros.VectorLayer'], ['Diceros.BezierAGG', 'Diceros.Layer', 'Diceros.Point', 'goog.events.EventType', 'goog.events.MouseWheelHandler', 'goog.object', 'goog.style']);
 goog.addDependency('../../../.././src/app/line/bezier-agg.js', ['Diceros.BezierAGG'], ['Diceros.Line', 'Diceros.LinePath']);
 goog.addDependency('../../../.././src/app/line/line-path.js', ['Diceros.LinePath'], []);
@@ -14,13 +15,14 @@ goog.addDependency('../../../.././src/app/ui/GoogleClient.js', ['imaya.ui.Google
 goog.addDependency('../../../.././src/app/ui/GoogleDriveLoadButton.js', ['imaya.ui.GoogleDriveLoadButton'], ['goog.ui.Button', 'imaya.ui.GoogleLoader', 'imaya.ui.GooglePickerAPI']);
 goog.addDependency('../../../.././src/app/ui/GoogleDriveLoadToolbarButton.js', ['imaya.ui.GoogleDriveLoadToolbarButton'], ['goog.ui.ControlContent', 'goog.ui.ToolbarButtonRenderer', 'goog.ui.registry', 'imaya.ui.GoogleDriveLoadButton']);
 goog.addDependency('../../../.././src/app/ui/GoogleDriveSaveButton.js', ['imaya.ui.GoogleDriveSaveButton'], ['Base64', 'goog.ui.Button', 'imaya.ui.GoogleDriveSaveDialog', 'imaya.ui.GooglePickerAPI']);
-goog.addDependency('../../../.././src/app/ui/GoogleDriveSaveDialog.js', ['imaya.ui.GoogleDriveSaveDialog'], ['goog.ui.Prompt', 'goog.ui.Resizable', 'imaya.ui.GooglePickerAPI']);
+goog.addDependency('../../../.././src/app/ui/GoogleDriveSaveDialog.js', ['imaya.ui.GoogleDriveSaveDialog'], ['goog.ui.Resizable', 'goog.ui.ac', 'imaya.ui.GooglePickerAPI', 'imaya.ui.Prompt']);
 goog.addDependency('../../../.././src/app/ui/GoogleDriveSaveToolbarButton.js', ['imaya.ui.GoogleDriveSaveToolbarButton'], ['goog.ui.ControlContent', 'goog.ui.ToolbarButtonRenderer', 'goog.ui.registry', 'imaya.ui.GoogleDriveSaveButton']);
 goog.addDependency('../../../.././src/app/ui/GoogleLoader.js', ['imaya.ui.GoogleLoader'], []);
 goog.addDependency('../../../.././src/app/ui/GooglePickerAPI.js', ['imaya.ui.GooglePickerAPI'], ['imaya.ui.GoogleClient', 'imaya.ui.GoogleLoader']);
+goog.addDependency('../../../.././src/app/ui/Prompt.js', ['imaya.ui.Prompt'], ['goog.ui.Prompt']);
 goog.addDependency('../../../.././src/app/ui/splitPane.js', ['imaya.ui.SplitPane'], ['goog.ui.SplitPane']);
 goog.addDependency('../../../.././src/app/util.js', ['Diceros.util'], ['goog.array']);
-goog.addDependency('../../../.././src/app/window/canvas-window.js', ['Diceros.CanvasWindow'], ['Diceros.RasterLayer', 'Diceros.VectorLayer', 'Diceros.Window', 'goog.events', 'goog.events.EventType', 'goog.events.MouseWheelHandler', 'goog.object', 'goog.style']);
+goog.addDependency('../../../.././src/app/window/canvas-window.js', ['Diceros.CanvasWindow'], ['Diceros.RasterLayer', 'Diceros.SVGLayer', 'Diceros.VectorLayer', 'Diceros.Window', 'goog.events', 'goog.events.EventType', 'goog.events.MouseWheelHandler', 'goog.object', 'goog.style']);
 goog.addDependency('../../../.././src/app/window/layer-window.js', ['Diceros.LayerWindow'], ['Diceros.LayerType', 'Diceros.Window', 'Diceros.util', 'goog.array', 'goog.dom', 'goog.events', 'goog.events.EventType', 'goog.object', 'goog.ui.Menu', 'goog.ui.MenuItem', 'goog.ui.MenuSeparator', 'goog.ui.Toolbar', 'goog.ui.ToolbarMenuButton', 'goog.ui.Tooltip']);
 goog.addDependency('../../../.././src/app/window/sizer-window.js', ['Diceros.SizerWindow'], ['Diceros.Window', 'goog.dom', 'goog.math.Coordinate', 'goog.style']);
 goog.addDependency('../../../.././src/app/window/window.js', ['Diceros.Window'], ['goog.object', 'goog.ui.Component']);

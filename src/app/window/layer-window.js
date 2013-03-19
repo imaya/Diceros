@@ -105,7 +105,9 @@ Diceros.LayerWindow.prototype.createToolbar = function() {
         {label: 'VectorLayer',
          type: Diceros.LayerType.VECTOR_LAYER},
         {label: 'RasterLayer',
-         type: Diceros.LayerType.RASTER_LAYER}
+         type: Diceros.LayerType.RASTER_LAYER},
+        {label: 'SVGLayer',
+          type: Diceros.LayerType.SVG_LAYER}
       ];
 
   layerButton.setTooltip('Add Layer');

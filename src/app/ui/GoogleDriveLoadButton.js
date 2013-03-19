@@ -58,7 +58,7 @@ imaya.ui.GoogleDriveLoadButton.prototype.handleAuth = function(auth, opt_noDialo
     goog.events.listen(this, goog.ui.Component.EventType.ACTION, function() {
       gapi.auth.authorize(
         {'client_id': that.clientId, 'scope': that.scope, 'immediate': true},
-        that.showDialog
+        that.showDialog.bind(this)
       );
     });
     this.token = auth.access_token;

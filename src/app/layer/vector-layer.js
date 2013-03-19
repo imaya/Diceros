@@ -60,21 +60,21 @@ Diceros.VectorLayer = function(app) {
    * 編集している線よりも前の線を記憶しておくバッファ
    * @type {CanvasRenderingContext2D}
    */
-  this.frontBuffer =
-  /** @type {CanvasRenderingContext2D} */
-    (this.app.makeCanvas(this.app.width, this.app.height).getContext('2d'));
+  this.frontBuffer;
   /**
    * 編集している線よりも後ろの線を記憶しておくバッファ
    * @type {CanvasRenderingContext2D}
    */
-  this.backBuffer =
-    /** @type {CanvasRenderingContext2D} */
-    (this.app.makeCanvas(this.app.width, this.app.height).getContext('2d'));
+  this.backBuffer;
   /**
    * 描画アウトライン用の一時パス.
    * @type {Diceros.LinePath}
    */
   this.outlinePath;
+  /**
+   * @type {Element}
+   */
+  this.ctrlPointLayer;
   /**
    * @type {Array.<number>}
    */
@@ -84,6 +84,18 @@ goog.inherits(
   Diceros.VectorLayer,
   Diceros.Layer
 );
+
+Diceros.VectorLayer.prototype.init = function() {
+  goog.base(this);
+
+  this.frontBuffer =
+  /** @type {CanvasRenderingContext2D} */
+    (this.app.makeCanvas(this.app.width, this.app.height).getContext('2d'));
+
+  this.backBuffer =
+  /** @type {CanvasRenderingContext2D} */
+    (this.app.makeCanvas(this.app.width, this.app.height).getContext('2d'));
+};
 
 Diceros.VectorLayer.prototype.getOverlayContext = function() {
   return this.app.windows[this.app.currentCanvasWindow].overlay.ctx;
@@ -674,7 +686,7 @@ function() {
  * @return {?Object} 線と制御点の index を含む Object か null.
  */
 Diceros.VectorLayer.prototype.checkCtrlPoint = function(x, y, opt_width) {
-  var ctx = this.ctx;
+  var ctx = this.getOverlayContext();
 
   if (typeof opt_width !== 'number') {
     opt_width = 5;
