@@ -23,15 +23,17 @@ ul.diceros-layerWindowMenu ul {
 }
 
 .goog-splitpane-first-container {
+    background-color: white;
 	border: 1px solid #6b90da;
 	overflow: hidden;
 }
 .goog-splitpane-second-container {
+    background-color: white;
 	border: 1px solid #6b90da;
 	overflow: hidden;
 }
 .goog-splitpane-handle {
-	background: #ccc;
+	background-color: #ccc;
 	cursor: col-resize;
 	border: solid 1px white;
 	border-style: none solid;

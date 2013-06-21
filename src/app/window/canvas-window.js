@@ -73,6 +73,26 @@ function(app, index, opt_width, opt_height) {
   this.overlay.ctx = this.overlay.canvas.getContext('2d');
   goog.style.setStyle(this.overlay.canvas, 'position', 'absolute');
 
+  /**
+   * 操作時の一時表示用オーバーレイレイヤー
+   * @type {Object}
+   */
+  this.temp= {};
+  this.temp.canvas = app.makeCanvas(app.width, app.height);
+  this.temp.ctx = this.temp.canvas.getContext('2d');
+  goog.style.setStyle(this.temp.canvas, 'position', 'absolute');
+
+  /**
+   * Pointer Events でタッチを無視する
+   * @type {boolean}
+   */
+  this.ignoreTouch = true;
+
+  /**
+   * @type {Diceros.CanvasWindow.PointerMode}
+   */
+  this.pointerMode = Diceros.CanvasWindow.PointerMode.Draw;
+
   // line buffer
   Diceros.BezierAGG.BufferCanvas.width = this.width;
   Diceros.BezierAGG.BufferCanvas.height = this.height;
@@ -81,6 +101,14 @@ goog.inherits(
   Diceros.CanvasWindow,
   Diceros.Window
 );
+
+/**
+ * @enum {number}
+ */
+Diceros.CanvasWindow.PointerMode = {
+  Draw: 0,
+  Move: 1
+};
 
 /**
  * このコンポーネントが decorate 可能かどうか
@@ -94,8 +122,7 @@ Diceros.CanvasWindow.prototype.canDecorate = function() {
  * コンポーネントの初期化処理
  * @param {Element} element
  */
-Diceros.CanvasWindow.prototype.decorateInternal =
-function(element) {
+Diceros.CanvasWindow.prototype.decorateInternal = function(element) {
   goog.base(this, 'decorateInternal', element);
 
   var layers = this.layers;
@@ -104,11 +131,30 @@ function(element) {
 
   goog.dom.append(this.app.target, this.element);
 
+  goog.style.setStyle(element, {
+    'width': '100%',
+    'height': '100%',
+    'background-image':
+      'url(data:image/png;base64,' +
+      'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgBAAAAACT4cgpAAAAF0lEQVR4AWO4CwX/oWCkC' +
+      '8AYMIkRLgAA37fcENcvrt8AAAAASUVORK5CYII=)'
+  });
+
   // キャンバスを重ねる基本要素
   this.canvasBase = goog.dom.createElement('div');
   goog.style.setStyle(this.canvasBase, 'position', 'relative');
   goog.dom.append(this.element, this.canvasBase);
   goog.dom.append(this.canvasBase, this.overlay.canvas);
+  this.overlay.canvas.id="ol";
+  goog.dom.append(this.canvasBase, this.temp.canvas);
+  this.temp.canvas.id="tmp";
+
+  // TODO: canvas size にする
+  goog.style.setStyle(this.canvasBase, {
+    'width': this.app.width + 'px',
+    'height': this.app.height + 'px',
+    'border': '1px solid black'
+  });
 
   for (i = 0, il = layers.length; i < il; ++i) {
     // canvas の配置
@@ -119,7 +165,9 @@ function(element) {
   }
 
   // イベントの設定
-  this.setEvent();
+  if (!this.getCaptureEventType()) {
+    this.decideCapture();
+  }
 };
 
 /**
@@ -140,6 +188,9 @@ Diceros.CanvasWindow.CaptureEventType = {
   POINTER: 2
 };
 
+/**
+ * @param {Diceros.CanvasWindow.CaptureEventType} type
+ */
 Diceros.CanvasWindow.prototype.setCaptureEventType = function(type) {
   switch (type) {
     case Diceros.CanvasWindow.CaptureEventType.MOUSE:
@@ -163,14 +214,23 @@ Diceros.CanvasWindow.prototype.setCaptureEventType = function(type) {
         end: goog.events.EventType.MSPOINTERUP
       };
   }
+  this.captureEventType.type = type;
+
+  this.setEvent();
+  this.app.refreshToolbar();
 };
 
 /**
- * イベントの設定
+ * @returns {(Diceros.CanvasWindow.CaptureEventType|undefined)}
  */
-Diceros.CanvasWindow.prototype.setEvent = function() {
-  var self = this, canvasWindowEvent;
+Diceros.CanvasWindow.prototype.getCaptureEventType = function() {
+  return this.captureEventType === void 0 ? void 0 : this.captureEventType.type;
+};
 
+/**
+ * キャプチャするイベントを環境から自動で判定する
+ */
+Diceros.CanvasWindow.prototype.decideCapture = function() {
   if (navigator.userAgent.indexOf('Android') !== -1) {
     this.setCaptureEventType(Diceros.CanvasWindow.CaptureEventType.TOUCH);
   } else if (window.navigator.msPointerEnabled) {
@@ -178,97 +238,225 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
   } else {
     this.setCaptureEventType(Diceros.CanvasWindow.CaptureEventType.MOUSE);
   }
+};
 
-  // XXX: クラス定数にするか？
-  canvasWindowEvent = {};
+/**
+ * イベントの設定
+ */
+Diceros.CanvasWindow.prototype.setEvent = function() {
+  /** @type {Diceros.CanvasWindow} */
+  var canvasWindow = this;
+  /** @type {Object} */
+  var canvasWindowEvent;
+  /** @type {Element} */
+  var element = this.element;
+  /** @type {(Element|goog.events.MouseWheelHandler)} */
+  var handler;
+
+  // すでに登録済みのキャプチャを外す
+  if (this.eventListeners) {
+    goog.object.forEach(this.eventListeners, function(value, key) {
+      if (key === goog.events.MouseWheelHandler.EventType.MOUSEWHEEL) {
+        handler = new goog.events.MouseWheelHandler(element);
+      } else {
+        handler = element;
+      }
+      goog.events.unlisten(handler, key, value);
+    });
+  }
+
+  canvasWindowEvent = this.eventListeners = {};
 
   // move
   canvasWindowEvent[this.captureEventType.move] = function(event) {
-    var layer = self.getCurrentLayer();
+    var layer = canvasWindow.getCurrentLayer();
+    var pos = goog.style.getPosition(canvasWindow.canvasBase);
 
-    event.event_.preventDefault();
     event.preventDefault();
 
-    if (!layer) {
+    if (
+      canvasWindow.ignoreTouch &&
+      canvasWindow.captureEventType.type === Diceros.CanvasWindow.CaptureEventType.POINTER &&
+      event.getBrowserEvent().pointerType !== MSPointerEvent.MSPOINTER_TYPE_PEN
+    ) {
       return;
     }
 
-    layer.event(event);
+    switch (canvasWindow.pointerMode) {
+      case Diceros.CanvasWindow.PointerMode.Draw:
+        event.target !== canvasWindow.element && layer && layer.event(event);
+        break;
+      case Diceros.CanvasWindow.PointerMode.Move:
+        if (canvasWindow.drag) {
+          if (canvasWindow.getCaptureEventType() === Diceros.CanvasWindow.CaptureEventType.TOUCH) {
+            goog.style.setPosition(
+              canvasWindow.canvasBase,
+              pos.x +
+                event.getBrowserEvent().changedTouches[0].clientX -
+                canvasWindow.prevEvent.getBrowserEvent().changedTouches[0].clientX,
+              pos.y +
+                event.getBrowserEvent().changedTouches[0].clientY -
+                canvasWindow.prevEvent.getBrowserEvent().changedTouches[0].clientY
+            );
+          } else {
+            goog.style.setPosition(
+              canvasWindow.canvasBase,
+              pos.x + event.clientX - canvasWindow.prevEvent.clientX,
+              pos.y + event.clientY - canvasWindow.prevEvent.clientY
+            );
+          }
+          canvasWindow.prevEvent = event;
+
+        }
+        break;
+      default:
+        throw new Error('invalid pointer mode');
+    }
   };
 
   // start
   canvasWindowEvent[this.captureEventType.start] = function(event) {
-    var layer = self.getCurrentLayer();
+    var layer = canvasWindow.getCurrentLayer();
+    var pos = goog.style.getPosition(canvasWindow.canvasBase);
 
-    event.event_.preventDefault();
     event.preventDefault();
 
-    self.drag = true;
-
-    if (!layer) {
+    if (
+      canvasWindow.ignoreTouch &&
+      canvasWindow.captureEventType.type === Diceros.CanvasWindow.CaptureEventType.POINTER &&
+      event.getBrowserEvent().pointerType !== MSPointerEvent.MSPOINTER_TYPE_PEN
+    ) {
       return;
     }
 
-    layer.event(event);
+    canvasWindow.drag = true;
+
+    switch (canvasWindow.pointerMode) {
+      case Diceros.CanvasWindow.PointerMode.Draw:
+        event.target !== canvasWindow.element && layer && layer.event(event);
+        break;
+      case Diceros.CanvasWindow.PointerMode.Move:
+        canvasWindow.prevEvent = event;
+        break;
+      default:
+        throw new Error('invalid pointer mode');
+    }
   };
 
   // end
   canvasWindowEvent[this.captureEventType.end] = function(event) {
-    var drag = self.drag, layer = self.getCurrentLayer();
+    var drag = canvasWindow.drag, layer = canvasWindow.getCurrentLayer();
+    var pos = goog.style.getPosition(canvasWindow.canvasBase);
 
-    self.drag = false;
+    canvasWindow.drag = false;
 
-    if (!layer) {
+    event.preventDefault();
+
+    if (
+      canvasWindow.ignoreTouch &&
+      canvasWindow.captureEventType.type === Diceros.CanvasWindow.CaptureEventType.POINTER &&
+      event.getBrowserEvent().pointerType !== MSPointerEvent.MSPOINTER_TYPE_PEN
+    ) {
       return;
     }
 
-    if (drag) {
-      layer.event(event);
+    switch (canvasWindow.pointerMode) {
+      case Diceros.CanvasWindow.PointerMode.Draw:
+        event.target !== canvasWindow.element && layer && drag && layer.event(event);
+        break;
+      case Diceros.CanvasWindow.PointerMode.Move:
+        break;
+      default:
+        throw new Error('invalid pointer mode');
     }
   };
 
   // out
-  canvasWindowEvent[goog.events.EventType.MOUSEOUT] = function(event) {
-    var offset = goog.style.getPageOffset(self.element),
+  canvasWindowEvent[
+    this.captureEventType.type === Diceros.CanvasWindow.CaptureEventType.POINTER ?
+    goog.events.EventType.MSPOINTEROUT :
+    goog.events.EventType.MOUSEOUT
+  ] = function(event) {
+    var offset = goog.style.getPageOffset(canvasWindow.element),
         x = event.pageX - offset.x,
         y = event.pageY - offset.y;
 
+    event.preventDefault();
+
     // 要素内の範囲内の場合は除外
-    if (x >= 0 && x < self.element.width() &&
-        y >= 0 && y < self.element.height()) {
+    if (x >= 0 && x < canvasWindow.canvasBase.width() &&
+        y >= 0 && y < canvasWindow.canvasBase.height()) {
       return;
     }
 
     // マウスが外れたときはマウスアップと同じ扱いにする
-    event.type = self.captureEventType.end;
+    event.type = canvasWindow.captureEventType.end;
+
     return canvasWindowEvent[event.type](event);
   };
 
   // wheel
   canvasWindowEvent[goog.events.MouseWheelHandler.EventType.MOUSEWHEEL] =
   function(event) {
-    var layer = self.getCurrentLayer();
-
-    if (layer) {
-      layer.event(event);
-    }
+    var layer = canvasWindow.getCurrentLayer();
 
     event.preventDefault();
+
+    switch (canvasWindow.pointerMode) {
+      case Diceros.CanvasWindow.PointerMode.Draw:
+        layer && layer.event(event);
+        break;
+      case Diceros.CanvasWindow.PointerMode.Move:
+        break;
+      default:
+        throw new Error('invalid pointer mode');
+    }
+  };
+
+  // hover TODO: event type に追加されたら対応する
+  canvasWindowEvent['MSPointerHover'] = function(event) {
+    var layer = canvasWindow.getCurrentLayer();
+
+    event.preventDefault();
+
+    switch (canvasWindow.pointerMode) {
+      case Diceros.CanvasWindow.PointerMode.Draw:
+        layer && layer.event(event);
+        break;
+      case Diceros.CanvasWindow.PointerMode.Move:
+        break;
+      default:
+        throw new Error('invalid pointer mode');
+    }
   };
 
   goog.array.forEach(Object.keys(canvasWindowEvent), function(eventType){
-    var element = this.element;
-
     if (eventType === goog.events.MouseWheelHandler.EventType.MOUSEWHEEL) {
-      element = new goog.events.MouseWheelHandler(element);
+      handler = new goog.events.MouseWheelHandler(element);
+    } else {
+      handler = element;
     }
 
     goog.events.listen(
-      element,
+      handler,
       eventType,
       canvasWindowEvent[eventType]
     );
   }, this);
+};
+
+/**
+ * @param {Diceros.CanvasWindow.PointerMode} pointerMode
+ */
+Diceros.CanvasWindow.prototype.setPointerMode = function(pointerMode) {
+  this.pointerMode = pointerMode;
+};
+
+/**
+ * @param {boolean} ignore
+ */
+Diceros.CanvasWindow.prototype.setIgnoreTouch = function(ignore) {
+  this.ignoreTouch = ignore;
 };
 
 /**
@@ -412,6 +600,41 @@ Diceros.CanvasWindow.fromObject = function(app, index, obj, opt_width, opt_heigh
 
   return cw;
 };
+
+/**
+ * @returns {HTMLCanvasElement}
+ */
+Diceros.CanvasWindow.prototype.createMergedCanvas = function() {
+  /** @type {Array.<Diceros.Layer>} */
+  var layers = this.layers;
+  /** @type {HTMLCanvasElement} */
+  var canvas =
+    /** @type {HTMLCanvasElement} */
+    (document.createElement('canvas'));
+  /** @type {CanvasRenderingContext2D} */
+  var ctx =
+    /** @type {CanvasRenderingContext2D} */
+    (canvas.getContext('2d'));
+  /** @type {number} */
+  var i;
+  /** @type {number} */
+  var il;
+  /** @type {Diceros.Layer} */
+  var layer;
+
+  canvas.width = this.width;
+  canvas.height = this.height;
+
+  for (i = 0, il = layers.length; i < il; ++i) {
+    layer = layers[i];
+    if (layer instanceof Diceros.SVGLayer) {
+      layer = layer.toVectorLayer();
+    }
+    ctx.drawImage(layer.canvas, 0, 0);
+  }
+
+  return canvas;
+}
 
 });
 /* vim:set expandtab ts=2 sw=2 tw=80: */

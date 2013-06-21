@@ -193,7 +193,7 @@ Diceros.LayerWindow.prototype.refresh = function() {
         /** @type {Element} */
         var parent = this.parentNode;
         /** @type {number} */
-        var index = Diceros.util.data(parent, 'layerIndex');
+        var index = /** @type {number}*/(Diceros.util.data(parent, 'layerIndex'));
         /** @type {Diceros.Layer} */
         var layer = canvasWindow.layers[index];
 

@@ -68,7 +68,8 @@ Diceros.LinePath.prototype.draw = function(ctx) {
   ctx.restore();
 };
 
-Diceros.LinePath.prototype.drawToSVGPath = function(path) {
+Diceros.LinePath.prototype.createRedrawFunction = function() {
+  var funcstr = ["ctx.save();"];
   /** @type {number} */
   var i;
   /** @type {number} */
@@ -84,6 +85,45 @@ Diceros.LinePath.prototype.drawToSVGPath = function(path) {
   /** @type {string} */
   var name;
 
+  if (this.color) {
+    funcstr.push("ctx.strokeStyle = ctx.fillStyle = this.color;");
+  }
+
+  for (i = 0, il = this.pos; i < il;) {
+    id = sequence[i++];
+    length = sequence[i++];
+    args = sequence.slice(i, i += length);
+
+    // method call
+    if (id < 0x80) {
+      name = Diceros.LinePath.ReverseMethodTable[id];
+      funcstr.push("ctx." + name + "(" + args.join(",") + ");");
+      // property set
+    } else {
+      name = Diceros.LinePath.ReversePropertyTable[id & 0x7f];
+      funcstr.push("ctx." + name + "=" + args[0] + ";");
+    }
+  }
+
+  funcstr.push("ctx.restore();");
+
+  this.redraw = new Function("ctx", funcstr.join("\n"));
+};
+
+Diceros.LinePath.prototype.drawToSVGPath = function(path) {
+  /** @type {number} */
+  var i;
+  /** @type {number} */
+  var il;
+  /** @type {Array.<number>} */
+  var sequence = this.sequence;
+  /** @type {number} */
+  var id;
+  /** @type {number} */
+  var length;
+  /** @type {Array.<number>} */
+  var args;
+  /** @type {Array} */
   var d = [];
 
   path.removeAttribute('stroke');
@@ -139,7 +179,17 @@ Diceros.LinePath.prototype.drawToSVGPath = function(path) {
   path.setAttribute('d', d.join(' '));
 };
 
-Diceros.LinePath.prototype.calcCanvasArcToSVGPath = function(x, y, radius, startAngle, endAngle, clockwise, isFirstPath) {
+/**
+ * @param {number} x
+ * @param {number} y
+ * @param {number} radius
+ * @param {number} startAngle
+ * @param {number} endAngle
+ * @param {boolean} clockwise
+ * @param {boolean=} opt_isFirstPath
+ * @returns {Array}
+ */
+Diceros.LinePath.prototype.calcCanvasArcToSVGPath = function(x, y, radius, startAngle, endAngle, clockwise, opt_isFirstPath) {
   var deltaAngle = Math.abs(startAngle - endAngle);
   var startX;
   var startY;
@@ -167,7 +217,7 @@ Diceros.LinePath.prototype.calcCanvasArcToSVGPath = function(x, y, radius, start
   // パスの先頭だった場合はその場所まで移動し、そうでない場合は前のパスからの直線
   startX = x + Math.cos(startAngle) * radius;
   startY = y + Math.sin(startAngle) * radius;
-  result.push(isFirstPath ? 'M' : 'L', startX, startY);
+  result.push(opt_isFirstPath ? 'M' : 'L', startX, startY);
 
   // パスの描画
   rot = deltaAngle * 180 / Math.PI; // sign, abs?

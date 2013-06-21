@@ -29,11 +29,14 @@ goog.require('goog.ui.ToolbarToggleButton');
 goog.require('goog.ui.ToolbarButton');
 goog.require('goog.ui.SelectionModel');
 
+goog.require('imaya.ui.ToolbarHSVColorPickerMenuButton');
 goog.require('goog.ui.ToolbarColorMenuButton');
 goog.require('goog.ui.ToolbarColorMenuButtonRenderer');
 goog.require('goog.ui.ToolbarSeparator');
 goog.require('goog.ui.Option');
 goog.require('goog.ui.ToolbarSelect');
+
+goog.require('Zlib.CRC32');
 
 goog.scope(function() {
 
@@ -119,6 +122,10 @@ Diceros.Application.prototype.layout = function() {
   var layer, canvas, sizer,
       height = this.height - Diceros.util.scrollBarWidth(),
       layout = this.layoutPanels;
+  /** @type {goog.ui.SplitPane} */
+  var baseSplitPane;
+  /** @type {goog.ui.SplitPane} */
+  var toolSplitPane;
   /** @type {Object} */
   var obj;
 
@@ -146,30 +153,30 @@ Diceros.Application.prototype.layout = function() {
   this.createToolbar();
 
   // サイズとレイヤーウィンドウをツールパネルに
-  layout.toolSplitPane = new goog.ui.SplitPane(
+  toolSplitPane = layout.toolSplitPane = new goog.ui.SplitPane(
     sizer, layer,
     goog.ui.SplitPane.Orientation.VERTICAL
   );
-  layout.toolSplitPane.setInitialSize(150);
-  layout.toolSplitPane.setContinuousResize(true);
-  layout.toolSplitPane.resize = function(size) {
-    layout.toolSplitPane.setSize(size.width, size.height);
+  toolSplitPane.setInitialSize(150);
+  toolSplitPane.setContinuousResize(true);
+  toolSplitPane.resize = function(size) {
+    toolSplitPane.setSize(size);
   };
 
   // ツールパネルとキャンバスウィンドウの結合
-  layout.baseSplitPane = new imaya.ui.SplitPane(
-    canvas, layout.toolSplitPane,
+  baseSplitPane = layout.baseSplitPane = new imaya.ui.SplitPane(
+    canvas, toolSplitPane,
     imaya.ui.SplitPane.Orientation.HORIZONTAL
   );
-  layout.baseSplitPane.setInitialSize(this.width - 150);
-  layout.baseSplitPane.setContinuousResize(true);
-  layout.baseSplitPane.setSnapDirection(false);
-  layout.baseSplitPane.setHandleSize(30);
+  baseSplitPane.setInitialSize(this.width - 150);
+  baseSplitPane.setContinuousResize(true);
+  baseSplitPane.setSnapDirection(false);
+  baseSplitPane.setHandleSize(30);
 
   // 適用
-  layout.baseSplitPane.render(this.target);
-  layout.baseSplitPane.setSize(new goog.math.Size(this.width, this.height - goog.style.getBorderBoxSize(this.toolbar.getElement()).height));
-  layout.toolSplitPane.setSize(new goog.math.Size(layout.toolSplitPane.getFirstComponentSize().width, height));
+  baseSplitPane.render(this.target);
+  baseSplitPane.setSize(new goog.math.Size(this.width, this.height - goog.style.getBorderBoxSize(this.toolbar.getElement()).height));
+  toolSplitPane.setSize(new goog.math.Size(toolSplitPane.getFirstComponentSize().width, height));
 };
 
 /**
@@ -178,8 +185,10 @@ Diceros.Application.prototype.layout = function() {
  * @return {Diceros.Window} 追加したウィンドウ.
  */
 Diceros.Application.prototype.addWindow = function(type) {
-  var newWindow, currentSize = this.windows.length,
-      initOption = {x: null, y: null, width: null, height: null};
+  /** @type {Diceros.Window} */
+  var newWindow;
+  /** @type {number} */
+  var currentSize = this.windows.length;
 
   // 事前処理
   switch (type) {
@@ -256,6 +265,10 @@ Diceros.Application.prototype.makeCanvas = function(width, height) {
   canvas.width = width;
   canvas.height = height;
 
+  var ctx = canvas.getContext('2d');
+  ctx.getImageData(0, 0, 1, 1);
+  ctx.transform(1,0,0,1,0,0);
+
   return canvas;
 };
 
@@ -263,13 +276,16 @@ Diceros.Application.prototype.makeCanvas = function(width, height) {
  * 各種イベントの設定
  */
 Diceros.Application.prototype.setEvent = function() {
-  var canvas, _this = this;
+  /** * @type {Diceros.Application} */
+  var app = this;
 
   // キーボードイベント
   goog.events.listen(
-    document, goog.events.EventType.KEYDOWN, function(event) {
-      var canvasWindow = _this.getCurrentCanvasWindow(),
+    this.target, goog.events.EventType.KEYDOWN, function(event) {
+      var canvasWindow = app.getCurrentCanvasWindow(),
           layer = canvasWindow.getCurrentLayer();
+
+      event.preventDefault();
 
       if (!layer) {
         return;
@@ -279,9 +295,11 @@ Diceros.Application.prototype.setEvent = function() {
     }
   );
   goog.events.listen(
-    document, goog.events.EventType.KEYUP, function(event) {
-      var canvasWindow = _this.getCurrentCanvasWindow(),
+    this.target, goog.events.EventType.KEYUP, function(event) {
+      var canvasWindow = app.getCurrentCanvasWindow(),
           layer = canvasWindow.getCurrentLayer();
+
+      event.preventDefault();
 
       if (!layer) {
         return;
@@ -297,12 +315,63 @@ Diceros.Application.prototype.setEvent = function() {
 Diceros.Application.prototype.createToolbar = function() {
   /** @type {goog.ui.Toolbar} */
   var toolbar = this.toolbar = new goog.ui.Toolbar();
+
+  // colorpicker
+  this.appendColorPickerButton(toolbar);
+
+  // separator
+  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
+
+  // mode switch button
+  this.appendEditModeButton(toolbar);
+
+  // separator
+  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
+
+  // line optimization
+  this.appendOptimizationButton(toolbar);
+
+  // save/load
+  this.appendSaveButton_(toolbar);
+  this.appendLoadButton_(toolbar);
+
+  // separator
+  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
+
+  // capture event target
+  this.appendCaptureButton(toolbar);
+
+  // ignore touch
+  this.getCurrentCanvasWindow().setIgnoreTouch(false);
+  this.appendIgnoreTouchButton_(toolbar);
+
+  // separator
+  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
+
+  this.appendPointerModeButton_(toolbar);
+
+  // rendering
+  this.refreshToolbar();
+  toolbar.render(this.target);
+};
+
+/**
+ * @param {goog.ui.Toolbar} toolbar
+ */
+Diceros.Application.prototype.appendColorPickerButton = function(toolbar) {
+  toolbar.colorButton = new imaya.ui.ToolbarHSVColorPickerMenuButton('Color');
+  toolbar.colorButton.setSelectedColor('red');
+  toolbar.addChild(toolbar.colorButton, true);
+};
+
+/**
+ * @param {goog.ui.Toolbar} toolbar
+ */
+Diceros.Application.prototype.appendEditModeButton = function(toolbar) {
+  /** @type {Diceros.Application} */
+  var app = this;
   /** @type {goog.ui.SelectionModel} */
   var selectionModel = new goog.ui.SelectionModel();
-  /** @type {Diceros.Application} */
-  var that = this;
-  /** @type {number} */
-  var i;
 
   toolbar.modeButtons = {
     '描画': {
@@ -316,25 +385,21 @@ Diceros.Application.prototype.createToolbar = function() {
     '削除': {
       value: Diceros.VectorLayer.Mode.DELETE,
       button: void 0
+    },
+    '太さ変更': {
+      value: Diceros.VectorLayer.Mode.WIDTH_UPDATE,
+      button: void 0
     }
   };
 
-  // colorpicker
-  toolbar.colorButton = new goog.ui.ToolbarColorMenuButton('Color');
-  toolbar.colorButton.setSelectedColor('black');
-  toolbar.addChild(toolbar.colorButton, true);
-
-  // separator
-  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
-
-  // mode switch button
   selectionModel.setSelectionHandler(function(button, select) {
     button && button.setChecked(select);
   });
+
   goog.object.forEach(
-    this.toolbar.modeButtons,
+    toolbar.modeButtons,
     function(obj, caption) {
-      var button = that.toolbar.modeButtons[caption].button =
+      var button = app.toolbar.modeButtons[caption].button =
         new goog.ui.ToolbarToggleButton(caption);
 
       button.setValue(obj.value);
@@ -345,8 +410,9 @@ Diceros.Application.prototype.createToolbar = function() {
         button, goog.ui.Component.EventType.ACTION, onClickSelectButton);
     }
   );
+
   function onClickSelectButton(e) {
-    var canvasWindow = that.windows[that.currentCanvasWindow];
+    var canvasWindow = app.windows[app.currentCanvasWindow];
     var currentLayer = canvasWindow.layers[canvasWindow.currentLayer];
 
     selectionModel.setSelectedItem(e.target);
@@ -356,30 +422,81 @@ Diceros.Application.prototype.createToolbar = function() {
       currentLayer.switchMode(currentLayer.mode);
     }
 
-    that.refreshToolbar();
+    app.refreshToolbar();
   }
-  // separator
-  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
+};
 
-  // line optimization button
+/**
+ * @param {goog.ui.Toolbar} toolbar
+ */
+Diceros.Application.prototype.appendOptimizationButton = function(toolbar) {
   var optimizationMenu = new goog.ui.Menu();
+  /** @type {number} */
+  var i;
+
   for (i = 0; i <= 10; ++i) {
     optimizationMenu.addChild(new goog.ui.Option(""+i), true);
   }
+
   var selector = new goog.ui.ToolbarSelect('線の補正', optimizationMenu);
+
   selector.setTooltip('線の補正');
   toolbar.addChild(selector, true);
   toolbar.lineOptimization = selector;
 
   goog.dom.classes.add(selector.getElement(), 'goog-toolbar-select');
+};
 
-  //
-  this.appendSaveButton_(toolbar);
-  this.appendLoadButton_(toolbar);
+/**
+ * @param {goog.ui.Toolbar} toolbar
+ */
+Diceros.Application.prototype.appendCaptureButton = function(toolbar) {
+  /** @type {Diceros.Application} */
+  var app = this;
+  /** @type {goog.ui.SelectionModel} */
+  var selectionModel = new goog.ui.SelectionModel();
 
-  // rendering
-  this.refreshToolbar();
-  toolbar.render(this.target);
+  toolbar.captureButtons = {
+    'Mouse': {
+      value: Diceros.CanvasWindow.CaptureEventType.MOUSE,
+      button: void 0
+    },
+    'Touch': {
+      value: Diceros.CanvasWindow.CaptureEventType.TOUCH,
+      button: void 0
+    },
+    'Pen(PointerEvents)': {
+      value: Diceros.CanvasWindow.CaptureEventType.POINTER,
+      button: void 0
+    }
+  };
+
+  selectionModel.setSelectionHandler(function(button, select) {
+    button && button.setChecked(select);
+  });
+
+  goog.object.forEach(
+    toolbar.captureButtons,
+    function(obj, caption) {
+      var button = toolbar.captureButtons[caption].button =
+        new goog.ui.ToolbarToggleButton(caption);
+
+      button.setValue(obj.value);
+      button.setAutoStates(goog.ui.Component.State.CHECKED, false);
+      selectionModel.addItem(button);
+      toolbar.addChild(button, true);
+      goog.events.listen(
+        button, goog.ui.Component.EventType.ACTION, onClickSelectButton);
+    }
+  );
+
+  function onClickSelectButton(e) {
+    var canvasWindow = app.windows[app.currentCanvasWindow];
+
+    selectionModel.setSelectedItem(e.target);
+    canvasWindow.setCaptureEventType(e.target.getValue());
+    app.refreshToolbar();
+  }
 };
 
 Diceros.Application.prototype.refreshToolbar = function() {
@@ -395,8 +512,10 @@ Diceros.Application.prototype.refreshToolbar = function() {
   var il;
   /** @type {goog.ui.ToolbarToggleButton} */
   var button;
+  /** @type {Diceros.CanvasWindow} */
+  var currentCanvasWindow = this.getCurrentCanvasWindow();
   /** @type {Diceros.Layer} */
-  var currentLayer = this.getCurrentCanvasWindow().getCurrentLayer();
+  var currentLayer = currentCanvasWindow.getCurrentLayer();
   /** @type {boolean} */
   var isVector = currentLayer instanceof Diceros.VectorLayer;
 
@@ -415,13 +534,26 @@ Diceros.Application.prototype.refreshToolbar = function() {
     }
   }
 
-  // line optimization button
-  /*
-  toolbar.optimizeButton.setEnabled(isVector);
+  if (currentCanvasWindow.getCaptureEventType() !== void 0) {
+    goog.object.forEach(toolbar.captureButtons, function(value, key) {
+      if (value.value === currentCanvasWindow.getCaptureEventType()) {
+        value.button.setChecked(true);
+      } else {
+        value.button.setChecked(false);
+      }
+    });
+  }
 
-  // point optimization button
-  toolbar.pointOptimize.setEnabled(isVector);
-  */
+  if (currentCanvasWindow.pointerMode !== void 0) {
+    goog.object.forEach(toolbar.capturePointerModeButtons, function(value, key) {
+      console.log(value.value, currentCanvasWindow.pointerMode);
+      if (value.value === currentCanvasWindow.pointerMode) {
+        value.button.setChecked(true);
+      } else {
+        value.button.setChecked(false);
+      }
+    });
+  }
 };
 
 /**
@@ -429,6 +561,8 @@ Diceros.Application.prototype.refreshToolbar = function() {
  * @private
  */
 Diceros.Application.prototype.appendSaveButton_ = function(toolbar) {
+  /** @type {Diceros.Application} */
+  var app = this;
   /** @type {imaya.ui.GoogleDriveSaveToolbarButton} */
   var button = new imaya.ui.GoogleDriveSaveToolbarButton('Save');
   /** @type {Diceros.CanvasWindow} */
@@ -439,8 +573,23 @@ Diceros.Application.prototype.appendSaveButton_ = function(toolbar) {
 
   // event handler
   button.setCallback(function(token) {
-    button.save(Date.now() + '.json', JSON.stringify(cw.toObject()), 'application/json', function() {
-      // save done
+    button.save(Date.now() + '.png', function() {
+      /** @type {HTMLCanvasElement} */
+      var canvas = cw.createMergedCanvas();
+      /** @type {string} */
+      var dataURL = canvas.toDataURL();
+      /** @type {Array.<string>} */
+      var base64 = dataURL.split(',', 2);
+      /** @type {string} */
+      var dataString = window.atob(base64[1]);
+      /** @type {Uint8Array} */
+      var dataArray = app.stringToByteArray(dataString);
+      /** @type {Uint8Array} */
+      var inserted = app.insertDicerosChunk(dataArray, JSON.stringify(cw.toObject()));
+
+      return inserted;
+    }, 'image/png', function() {
+      // done
     });
   });
 
@@ -454,24 +603,110 @@ Diceros.Application.prototype.appendSaveButton_ = function(toolbar) {
 Diceros.Application.prototype.appendLoadButton_ = function(toolbar) {
   /** @type {imaya.ui.GoogleDriveLoadToolbarButton} */
   var button = new imaya.ui.GoogleDriveLoadToolbarButton('Load');
-  /** @type {Diceros.CanvasWindow} */
-  var cw = this.getCurrentCanvasWindow();
 
   button.setClientId('663668731705.apps.googleusercontent.com');
   button.setScope('https://www.googleapis.com/auth/drive');
+  button.setResponseType('arraybuffer');
 
   // event handler
   button.setCallback(function(data) {
+    var json = this.extractJsonFromPNG(new Uint8Array(data));
+
     // load done
-    this.refreshFromObject(JSON.parse(data));
+    this.refreshFromObject(
+      JSON.parse(
+        json
+      )
+    );
   }.bind(this));
 
   toolbar.addChild(button, true);
 };
 
+/**
+ * @param {goog.ui.Toolbar} toolbar
+ * @private
+ */
+Diceros.Application.prototype.appendIgnoreTouchButton_ = function(toolbar) {
+  /** @type {Diceros.Application} */
+  var app = this;
+  /** @type {goog.ui.ToolbarToggleButton} */
+  var button = new goog.ui.ToolbarToggleButton('Ignore Touch (PointerEvents)');
+
+  // event handler
+  goog.events.listen(button, goog.ui.Component.EventType.ACTION, function(ev) {
+    /** @type {boolean} */
+    var disable = ev.target.isChecked();
+
+    app.getCurrentCanvasWindow().setIgnoreTouch(disable);
+  });
+
+  toolbar.addChild(button, true);
+};
+
+
+/**
+ * @param {goog.ui.Toolbar} toolbar
+ */
+Diceros.Application.prototype.appendPointerModeButton_ = function(toolbar) {
+  /** @type {Diceros.Application} */
+  var app = this;
+  /** @type {goog.ui.SelectionModel} */
+  var selectionModel = new goog.ui.SelectionModel();
+
+  toolbar.capturePointerModeButtons = {
+    'Pen': {
+      value: Diceros.CanvasWindow.PointerMode.Draw,
+      class: 'icon-pen',
+      button: void 0
+    },
+    'Move': {
+      value: Diceros.CanvasWindow.PointerMode.Move,
+      class: 'icon-hand',
+      button: void 0
+    }
+  };
+
+  selectionModel.setSelectionHandler(function(button, select) {
+    button && button.setChecked(select);
+  });
+
+  goog.object.forEach(
+    toolbar.capturePointerModeButtons,
+    function(obj, caption) {
+      /** @type {!HTMLElement} */
+      var value = goog.dom.createDom('span');
+      /** @type {goog.ui.ToolbarToggleButton} */
+      var button = toolbar.capturePointerModeButtons[caption].button =
+        new goog.ui.ToolbarToggleButton(caption);
+
+      goog.dom.classes.add(value, obj.class);
+
+      button.setContent(value);
+      button.setValue(obj.value);
+      button.setAutoStates(goog.ui.Component.State.CHECKED, false);
+      selectionModel.addItem(button);
+      toolbar.addChild(button, true);
+      goog.events.listen(
+        button, goog.ui.Component.EventType.ACTION, onClickSelectButton);
+    }
+  );
+
+  function onClickSelectButton(e) {
+    var canvasWindow = app.windows[app.currentCanvasWindow];
+
+    selectionModel.setSelectedItem(e.target);
+    canvasWindow.setPointerMode(e.target.getValue());
+    app.refreshToolbar();
+  }
+};
+
 Diceros.Application.prototype.refreshFromObject = function(obj) {
+  /** @type {number} */
   var width = this.width;
+  /** @type {number} */
   var height = this.height;
+  /** @type {!Element} */
   var target = this.target;
 
   if (this.target) {
@@ -487,6 +722,165 @@ Diceros.Application.prototype.refreshFromObject = function(obj) {
 
   Diceros.Application.call(this, {'width': width, 'height': height});
   this.render(target);
+};
+
+/**
+ * @param {Uint8Array} array
+ * @param {string} json
+ * @returns {Uint8Array}
+ */
+Diceros.Application.prototype.insertDicerosChunk = function(array, json) {
+  /** @type {Uint8Array} */
+  var newPng = new Uint8Array(array.length + json.length + 12);
+  /** @type {Uint8Array} */
+  var chunkData = this.stringToByteArray(json);
+  /** @type {number} */
+  var chunkLength = chunkData.length;
+  /** @type {number} */
+  var pos = 0;
+  /** @type {number} */
+  var wpos;
+  /** @type {number} */
+  var length;
+  /** @type {string} */
+  var type;
+  /** @type {number} */
+  var limit = array.length;
+  /** @type {number} */
+  var crc32;
+
+  if (String.fromCharCode.apply(null, array.subarray(pos, pos += 8)) !==
+    String.fromCharCode(137, 80, 78, 71, 13, 10, 26, 10)) {
+    throw new Error('invalid png singature');
+  }
+
+  while (pos < limit) {
+    length =
+      (array[pos++] << 24) +
+      (array[pos++] << 16) +
+      (array[pos++] <<  8) +
+      (array[pos++] <<  0);
+
+    type = String.fromCharCode.apply(null, array.subarray(pos, pos += 4));
+
+    if (type === 'IDAT') {
+      // copy before IDAT
+      pos -= 8;
+      newPng.set(array.subarray(0, pos), 0);
+
+      // insert Diceros specific chunk
+      wpos = pos;
+      chunkData = this.stringToByteArray(json);
+      chunkLength = chunkData.length;
+
+      // length
+      newPng[wpos++] = (chunkLength >> 24) & 0xff;
+      newPng[wpos++] = (chunkLength >> 16) & 0xff;
+      newPng[wpos++] = (chunkLength >>  8) & 0xff;
+      newPng[wpos++] = (chunkLength >>  0) & 0xff;
+
+      // type
+      newPng.set(this.stringToByteArray('dvIT'), wpos);
+      wpos += 4;
+
+      // data
+      newPng.set(chunkData, wpos);
+      wpos += chunkLength;
+
+      // crc32
+      crc32 = Zlib.CRC32.calc(chunkData);
+      newPng[wpos++] = (crc32 >> 24) & 0xff;
+      newPng[wpos++] = (crc32 >> 16) & 0xff;
+      newPng[wpos++] = (crc32 >>  8) & 0xff;
+      newPng[wpos++] = (crc32 >>  0) & 0xff;
+
+      // copy IDAT, after IDAT
+      newPng.set(array.subarray(pos), wpos);
+
+      return newPng;
+    } else {
+      pos += length + 4;
+    }
+  }
+
+  throw new Error('IDAT chunk not found');
+};
+
+
+/**
+ * @param {Uint8Array} array
+ * @returns {string}
+ */
+Diceros.Application.prototype.extractJsonFromPNG = function(array) {
+  /** @type {number} */
+  var pos = 0;
+  /** @type {number} */
+  var length;
+  /** @type {string} */
+  var type;
+  /** @type {number} */
+  var limit = array.length;
+
+  if (String.fromCharCode.apply(null, array.subarray(pos, pos += 8)) !==
+    String.fromCharCode(137, 80, 78, 71, 13, 10, 26, 10)) {
+    throw new Error('invalid png singature');
+  }
+
+  while (pos < limit) {
+    length =
+      (array[pos++] << 24) +
+      (array[pos++] << 16) +
+      (array[pos++] <<  8) +
+      (array[pos++] <<  0);
+
+    type = String.fromCharCode.apply(null, array.subarray(pos, pos += 4));
+
+    if (type !== 'dvIT') {
+      pos += length + 4;
+    } else {
+      return this.byteArrayToString(array.subarray(pos, pos += length));
+    }
+  }
+
+  throw new Error('json not found');
+};
+
+/**
+ * @param {string} str
+ * @returns {Uint8Array}
+ */
+Diceros.Application.prototype.stringToByteArray = function(str) {
+  /** @type {Uint8Array} */
+  var array = new Uint8Array(str.length);
+  /** @type {number} */
+  var i;
+  /** @type {number} */
+  var il;
+
+  for (i = 0, il = str.length; i < il; ++i) {
+    array[i] = str.charCodeAt(i);
+  }
+
+  return array;
+};
+
+  /**
+ * @param {Uint8Array} byteArray
+ * @returns {string}
+ */
+Diceros.Application.prototype.byteArrayToString = function(byteArray) {
+  /** @type {string} */
+  var str = "";
+  /** @type {number} */
+  var pos = 0;
+  /** @type {number} */
+  var limit = byteArray.length;
+
+  while (pos < limit) {
+    str += String.fromCharCode.apply(null, byteArray.subarray(pos, pos += 0x8000));
+  }
+
+  return str;
 };
 
 // end of scope

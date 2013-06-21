@@ -120,17 +120,21 @@ Diceros.BezierAGG.prototype.updateControlPoint = function(index, point) {
   ctrlPoints.splice(index, 1, point);
 };
 
-
 /**
  * アウトラインのパスを求める.
  * @param {number=} opt_width 幅を固定する場合は指定する.
  * @param {string=} opt_color 色を固定する場合は指定する.
+ * @param {number=} opt_start 描画対象の開始位置.
+ * @param {number=} opt_end 描画対象の終了位置.
  * @return {Diceros.LinePath} 描画コンテキスト.
  */
-Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color) {
+Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color, opt_start, opt_end) {
   // TODO
-  var data = this.ctrlPoints,
-    ctrlPoints = this.getCtrlPointsAGG_(data, this.curveCtrlPoints);
+  var data;
+  /** @type {Array} */
+  var ctrlPoints;
+  /** @type {number} */
+  var head;
   /** @type {number} */
   var width;
   /** @type {number} */
@@ -147,6 +151,33 @@ Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color) {
   var maxY = -Infinity;
   /** @type {CanvasRenderingContext2D} */
   var ctx = /** @type {CanvasRenderingContext2D} */(new Diceros.LinePath());
+
+  // 完全描画
+  if (opt_start === void 0) {
+    data = this.ctrlPoints;
+    ctrlPoints = this.getCtrlPointsAGG_(this.ctrlPoints, this.curveCtrlPoints);
+  // 部分描画
+  } else {
+    while (opt_start < 0) {
+      opt_start += this.ctrlPoints.length;
+    }
+
+    switch (opt_start) {
+      case 0: /* FALLTHROUGH */
+      case 1:
+        head = opt_start;
+        break;
+      default:
+        head = 2;
+        break;
+    }
+
+    data = this.ctrlPoints.slice(opt_start, opt_end);
+    ctrlPoints = this.getCtrlPointsAGG_(
+      this.ctrlPoints.slice(opt_start-head),
+      this.curveCtrlPoints.slice(opt_start-head)
+    ).slice(head);
+  }
 
   if (data.length < 1) {
     return null;
@@ -211,8 +242,10 @@ Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color) {
 
   if (opt_width !== void 0) {
     ctx.lineWidth = opt_width | 0;
-    ctx.stroke();
+  } else {
+    ctx.lineWidth = data[li - 1].width;
   }
+  ctx.stroke();
 
   ctx.x = minX;
   ctx.y = minY;
@@ -323,7 +356,7 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
 
   // 線の計算
   for (var i = 0, l = data.length - 1; i < l; i++) {
-    point = data[i],
+    point = data[i];
     next = data[i+1];
     cp = ctrlPoints[i];
 
@@ -717,6 +750,8 @@ Diceros.BezierAGG.prototype.optimize = function(param) {
   var optimizeValue;
   var prev = ctrlPoints.length;
 
+  this.getCtrlPointsAGG_(ctrlPoints, curvePoints);
+
   if (param === 0) {
     return;
   }
@@ -923,20 +958,12 @@ Diceros.BezierAGG.prototype.checkline = function(p0, p1, p2, cp00, cp01, cp10, c
   var cp12;
   /** @type {Array.<Diceros.Point>} */
   var splitPoint = [
-    this.splitBezier(p0, p1, cp00, cp01, 0.125),
     this.splitBezier(p0, p1, cp00, cp01, 0.25),
-    this.splitBezier(p0, p1, cp00, cp01, 0.375),
     this.splitBezier(p0, p1, cp00, cp01, 0.50),
-    this.splitBezier(p0, p1, cp00, cp01, 0.625),
     this.splitBezier(p0, p1, cp00, cp01, 0.75),
-    this.splitBezier(p0, p1, cp00, cp01, 0.875),
-    this.splitBezier(p1, p2, cp10, cp11, 0.125),
     this.splitBezier(p1, p2, cp10, cp11, 0.25),
-    this.splitBezier(p1, p2, cp10, cp11, 0.375),
     this.splitBezier(p1, p2, cp10, cp11, 0.50),
-    this.splitBezier(p1, p2, cp10, cp11, 0.625),
-    this.splitBezier(p1, p2, cp10, cp11, 0.75),
-    this.splitBezier(p1, p2, cp10, cp11, 0.875)
+    this.splitBezier(p1, p2, cp10, cp11, 0.75)
   ];
   /** @type {boolean} */
   var removal;

@@ -1,0 +1,39 @@
+td.google-drive-save-dialog-column {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    border-bottom: 1px solid #e5e5e5;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+td.google-drive-save-dialog-filename {
+    font-weight: bold;
+    margin-left: 5px;
+    overflow: hidden;
+    padding-left: 7px;
+}
+
+tr.google-drive-save-dialog-row {
+    font-size: 13px;
+    width: 100%;
+    cursor: pointer;
+}
+tr.google-drive-save-dialog-selected {
+    background-color: #ffd;
+}
+
+thead.googl-drive-save-dialog-header {
+    border: solid 1px #e5e5e5;
+    border-top-left-radius: 2px;
+    border-top-right-radius: 2px;
+    margin: 0 -1px 0 0;
+    line-height: 2.077em;
+    text-align: left;
+    font-weight: bold;
+    color: #444;
+    background-color: #ebebeb;
+}
+
+thead.googl-drive-save-dialog-header > tr > th {
+    padding: 0 1em;
+}

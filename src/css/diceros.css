@@ -2,6 +2,9 @@
 	background-color: white;
 }
 
+.diceros-layerList > li {
+    white-space: nowrap;
+}
 .diceros-selectedLayer {
 	background-color: #ccf;
 }
@@ -37,3 +40,14 @@ ul.diceros-layerWindowMenu ul {
 	border-style: none solid;
 }
 
+.icon-pen {
+    background-image: url(../images/ico_pen.png);
+    background-repeat: no-repeat;
+    padding-left: 18px;
+}
+
+.icon-hand {
+    background-image: url(../images/ico_hand.png);
+    background-repeat: no-repeat;
+    padding-left: 18px;
+}

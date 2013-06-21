@@ -58,11 +58,14 @@ Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
   ev.target;
   /** @type {goog.math.Coordinate} */
   var offset = goog.style.getPageOffset(ev.target);
+  /** @type {Touch} */
+  var touch;
 
   // touch
   if (ev.type.indexOf('touch') === 0) {
-    x = ev.getBrowserEvent().touches[0].pageX - offset.x; // XXX
-    y = ev.getBrowserEvent().touches[0].pageY - offset.y; // XXX
+    touch = ev.getBrowserEvent().changedTouches[0];
+    x = touch.pageX - offset.x; // XXX
+    y = touch.pageY - offset.y; // XXX
 
   // mouse
   } else {
@@ -89,8 +92,8 @@ Diceros.Point.prototype.getPressure = function(opt_event) {
   var plugin = this.getWacomPlugin();
   /** @type {Event} */
   var browserEvent;
-  /** @type {TouchEvent} */
-  var touchEvent;
+  /** @type {Touch} */
+  var touch;
 
   // Wacom プラグイン
   if (plugin && plugin['penAPI'] && plugin['penAPI']['isWacom'] &&
@@ -104,18 +107,22 @@ Diceros.Point.prototype.getPressure = function(opt_event) {
 
     // touch event
     if (opt_event.type.indexOf('touch') === 0) {
-      touchEvent = browserEvent.touches[0];
+      touch = browserEvent.changedTouches[0];
 
       // force property
-      if (typeof touchEvent['webkitForce'] === 'number') {
-        return touchEvent['webkitForce'];
+      if (typeof touch['webkitForce'] === 'number') {
+        return touch['webkitForce'];
       }
-      if (typeof touchEvent['force'] === 'number') {
-        return touchEvent['force'];
+      if (typeof touch['force'] === 'number') {
+        return touch['force'];
       }
     // Pointer Events
-    } else if (opt_event.type.indexOf('pointer') !== -1) {
-      return browserEvent['pressure'];
+    } else if (browserEvent.type.toLowerCase().indexOf('pointer') !== -1) {
+      if (browserEvent['pointerType'] === MSPointerEvent['MSPOINTER_TYPE_PEN']) {
+        return browserEvent['pressure'];
+      } else {
+        return 1;
+      }
     }
   }
 

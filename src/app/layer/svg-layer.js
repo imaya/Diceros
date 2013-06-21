@@ -18,12 +18,20 @@ Diceros.SVGLayer = function(app) {
   this.name = 'SVGLayer';
   // TODO
   this.svgPaths = [];
+  /** @type {Element} */
+  this.canvas;
+  /** @type {Element} */
+  this.ctx;
 };
 goog.inherits(
   Diceros.SVGLayer,
   Diceros.VectorLayer
 );
 
+/**
+ * @type {string}
+ * @const
+ */
 Diceros.SVGLayer.SVGNS = "http://www.w3.org/2000/svg";
 
 Diceros.SVGLayer.prototype.init = function() {
@@ -35,6 +43,10 @@ Diceros.SVGLayer.prototype.init = function() {
   goog.style.setStyle(this.canvas, 'position', 'absolute');
 };
 
+/**
+ * オーバーレイのコンテキストを返す
+ * @returns {CanvasRenderingContext2D}
+ */
 Diceros.SVGLayer.prototype.getOverlayContext = function() {
   return this.app.windows[this.app.currentCanvasWindow].overlay.ctx;
 };
@@ -48,7 +60,7 @@ Diceros.SVGLayer.prototype.drawNewline = function() {
   /** @type {Diceros.Line} */
   var line = this.lines[lineIndex];
   /** @type {Diceros.LinePath} */
-  var path = this.outlinePath;
+  var path = this.tempPath;
   /** @type {CanvasRenderingContext2D} */
   var overlay = this.getOverlayContext();
 
@@ -58,10 +70,7 @@ Diceros.SVGLayer.prototype.drawNewline = function() {
   }
 
   // clear outline
-  if (path) {
-    overlay.clearRect(path.x - 2, path.y - 2, path.width + 4, path.height + 4);
-    this.outlinePath = null;
-  }
+  this.clearOutline();
 
   // draw new line
   path = this.paths[lineIndex] = line.path();
@@ -94,7 +103,6 @@ Diceros.SVGLayer.prototype.refreshCurrentLine = function() {
   }
 };
 
-
 /**
  * 制御点の表示を消す
  */
@@ -104,7 +112,6 @@ function() {
 
   ctx.clearRect(0, 0, this.app.width, this.app.height);
 };
-
 
 /**
  * 制御点のアタリ判定
@@ -185,6 +192,10 @@ Diceros.SVGLayer.fromObject = function(app, obj) {
   }
 
   return layer;
+};
+
+Diceros.SVGLayer.prototype.toVectorLayer = function() {
+  return Diceros.VectorLayer.fromObject(this.app, this.toObject());
 };
 
 // end of scope

@@ -29,7 +29,7 @@ Diceros.util.data = function(elm, label, opt_data) {
   }
 
   return (elm.application_data[label] = opt_data);
-}
+};
 
 Diceros.util.scrollBarWidth = function() { 
   var body = document.body,

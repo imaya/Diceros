@@ -49,8 +49,6 @@ Diceros.Layer.prototype.init = function() {
     (this.canvas.getContext('2d'));
 
   goog.style.setStyle(this.canvas, 'position', 'absolute');
-
-
 };
 
 Diceros.Layer.prototype.getCanvas = function() {

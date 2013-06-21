@@ -17,13 +17,29 @@ goog.scope(function() {
 imaya.ui.GoogleDriveSaveButton = function(content, opt_renderer, opt_domHelper) {
   goog.base(this, content, opt_renderer, opt_domHelper);
 
+  /** @type {HTMLImageElement} */
+  this.icon;
   /** @type {string} */
   this.clientId;
 };
 goog.inherits(imaya.ui.GoogleDriveSaveButton, goog.ui.Button);
 
+/** @enum {string} */
+imaya.ui.GoogleDriveSaveButton.Icon = {
+  Loading: 'data:image/gif;base64,R0lGODlhEAAQAPIAAP///wAAAMLCwkJCQgAAAGJiYoKCgpKSkiH/C05FVFNDQVBFMi4wAwEAAAAh/hpDcmVhdGVkIHdpdGggYWpheGxvYWQuaW5mbwAh+QQJCgAAACwAAAAAEAAQAAADMwi63P4wyklrE2MIOggZnAdOmGYJRbExwroUmcG2LmDEwnHQLVsYOd2mBzkYDAdKa+dIAAAh+QQJCgAAACwAAAAAEAAQAAADNAi63P5OjCEgG4QMu7DmikRxQlFUYDEZIGBMRVsaqHwctXXf7WEYB4Ag1xjihkMZsiUkKhIAIfkECQoAAAAsAAAAABAAEAAAAzYIujIjK8pByJDMlFYvBoVjHA70GU7xSUJhmKtwHPAKzLO9HMaoKwJZ7Rf8AYPDDzKpZBqfvwQAIfkECQoAAAAsAAAAABAAEAAAAzMIumIlK8oyhpHsnFZfhYumCYUhDAQxRIdhHBGqRoKw0R8DYlJd8z0fMDgsGo/IpHI5TAAAIfkECQoAAAAsAAAAABAAEAAAAzIIunInK0rnZBTwGPNMgQwmdsNgXGJUlIWEuR5oWUIpz8pAEAMe6TwfwyYsGo/IpFKSAAAh+QQJCgAAACwAAAAAEAAQAAADMwi6IMKQORfjdOe82p4wGccc4CEuQradylesojEMBgsUc2G7sDX3lQGBMLAJibufbSlKAAAh+QQJCgAAACwAAAAAEAAQAAADMgi63P7wCRHZnFVdmgHu2nFwlWCI3WGc3TSWhUFGxTAUkGCbtgENBMJAEJsxgMLWzpEAACH5BAkKAAAALAAAAAAQABAAAAMyCLrc/jDKSatlQtScKdceCAjDII7HcQ4EMTCpyrCuUBjCYRgHVtqlAiB1YhiCnlsRkAAAOwAAAAAAAAAAAA==',
+  Drive: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAvVBMVEW/nzXfsDK3lzD4xz8GnlxPd6/6zEX6ykAGnlspcOgobOMJpV8HfUkefkP7zEQJn1wGmVpVlUIHnVsSdYoFmlr4xz7Ppzj2ykQYhKAInlsudO0Aj1DzwzgAAAAHnFr8zkf7y0L4xjw1fPMJoV0KpV/+0Uo5gPcvd/AhVa8Hj1LxwTokYs0LqGFRf7+ykS0+hPrkuj0pcOgpY8OPmDsaaZ0nZMcGe0gvdzwNi2+hnDYaWqAqcOjMozHQrDpLd7gaybt4AAAAHnRSTlPv34C/QN+fMO+vQN9w7++vgN9w75/fEIggz+8QQADxP5zrAAAAnUlEQVR4Xm3P5Q7CUAwFYGTAcJ8wrspcUJf3fyzKBiFZ1n/9cpqT1lBpqsGZhoyx5R8mwZUxSs0fWDo+h5SQkfGFsRCnPVGKtAvQhJTBEEDRTg62jGM8MCFBmx+YCYA+MmrPDWVrAB0upIZQI03TRx3AFkIc/B13kyR5tQA0jC/+kWeZy71tDwAt8C3yCujmLc48unvchX1lVT1Xhjcw0B8Wq0q0eAAAAABJRU5ErkJggg=='
+};
+
 imaya.ui.GoogleDriveSaveButton.prototype.createDom = function() {
   goog.base(this, 'createDom');
+
+  /** @type {HTMLImageElement} */
+  var icon = this.icon = new Image();
+  icon.width = icon.height = 12;
+  icon.style.paddingRight = "0.25em";
+  icon.style.paddingTop = "2px";
+  this.setRequestState(false);
+  this.getContentElement().insertBefore(icon, this.getContentElement().firstChild);
 
   imaya.ui.GooglePickerAPI.registerCallback(
     function() {
@@ -55,6 +71,7 @@ imaya.ui.GoogleDriveSaveButton.prototype.handleAuth = function(auth, opt_noDialo
 
     // 初回成功時に認証済み時のイベントを登録し、コールバック処理も行う
     goog.events.listen(this, goog.ui.Component.EventType.ACTION, function() {
+      that.setRequestState(true);
       // セッションがタイムアウトしていたら再接続
       gapi.auth.authorize(
         {'client_id': that.clientId, 'scope': that.scope, 'immediate': true},
@@ -82,6 +99,11 @@ imaya.ui.GoogleDriveSaveButton.prototype.handleAuth = function(auth, opt_noDialo
  */
 imaya.ui.GoogleDriveSaveButton.prototype.setCallback = function(func) {
   this.callback = func;
+};
+
+imaya.ui.GoogleDriveSaveButton.prototype.setRequestState = function(request) {
+  this.setEnabled(!request);
+  this.icon.src = request ? imaya.ui.GoogleDriveSaveButton.Icon.Loading : imaya.ui.GoogleDriveSaveButton.Icon.Drive;
 };
 
 imaya.ui.GoogleDriveSaveButton.prototype.requestAuth = function() {
@@ -117,11 +139,14 @@ imaya.ui.GoogleDriveSaveButton.prototype.getToken = function() {
 
 /**
  * @param {string} filename
- * @param {(string|Array.<number>|Uint8Array)} data
+ * @param {(string|Array.<number>|Uint8Array|function():(string|Array.<number>|Uint8Array))} data
  * @param {string=} opt_type
  * @param {Function=} opt_callback
  */
 imaya.ui.GoogleDriveSaveButton.prototype.save = function(filename, data, opt_type, opt_callback) {
+  /** @type {imaya.ui.GoogleDriveSaveButton} */
+  var button = this;
+
   if (!this.token) {
     throw new Error('invalid access token');
   }
@@ -130,6 +155,9 @@ imaya.ui.GoogleDriveSaveButton.prototype.save = function(filename, data, opt_typ
     'Save file to Google Drive',
     function(response) {
       if (response !== null) {
+        if (typeof data === 'function') {
+          data = data();
+        }
         this.sendRequest(response, data, opt_type, opt_callback);
       }
       dialog.dispose();
@@ -137,6 +165,7 @@ imaya.ui.GoogleDriveSaveButton.prototype.save = function(filename, data, opt_typ
     filename
   );
   dialog.setVisible(true);
+  button.setRequestState(false);
 };
 
 /**
