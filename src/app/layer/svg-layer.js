@@ -66,7 +66,7 @@ Diceros.SVGLayer.prototype.drawNewline = function() {
 
   // optimization
   if (typeof line.optimize === 'function') {
-    line.optimize(this.app.toolbar.lineOptimization.getValue() | 0);
+    line.optimize(this.app.lineOptimization);
   }
 
   // clear outline

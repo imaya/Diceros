@@ -225,7 +225,7 @@ Diceros.VectorLayer.prototype.handleEventDefault = function(event) {
     case goog.events.EventType.TOUCHSTART: /* FALLTHROUGH */
     case goog.events.EventType.MOUSEDOWN:
       // 線のセットアップ
-      line = new Diceros.BezierAGG(this.app.toolbar.colorButton.getSelectedColor());
+      line = new Diceros.BezierAGG(this.app.color);
       point = Diceros.Point.createFromEvent(event, this.getCurrentPenSize()); // XXX
 
       // 最初の点を追加し、線リストに追加
@@ -558,7 +558,7 @@ Diceros.VectorLayer.prototype.drawNewline = function() {
 
   // optimization
   if (typeof line.optimize === 'function') {
-    line.optimize(this.app.toolbar.lineOptimization.getValue() | 0);
+    line.optimize(this.app.lineOptimization);
   }
 
   this.clearOutline();

@@ -1,5 +1,6 @@
 goog.provide('imaya.ui.HSVColorPickerMenuButton');
 
+goog.require('goog.color');
 goog.require('goog.ui.Component.EventType');
 goog.require('goog.ui.ControlContent');
 goog.require('goog.ui.Menu');
@@ -23,8 +24,11 @@ goog.require('imaya.ui.HSVColorPicker');
 imaya.ui.HSVColorPickerMenuButton =
 function(content, opt_menu, opt_renderer, opt_domHelper) {
   goog.base(this, content, opt_menu, opt_renderer || goog.ui.ColorMenuButtonRenderer.getInstance(), opt_domHelper);
+
+  this.hsv = [180, 1, 1];
 };
 goog.inherits(imaya.ui.HSVColorPickerMenuButton, goog.ui.MenuButton);
+
 
 /**
  * Factory method that creates and returns a new {@link goog.ui.Menu} instance
@@ -33,15 +37,23 @@ goog.inherits(imaya.ui.HSVColorPickerMenuButton, goog.ui.MenuButton);
  *     document interaction.
  * @return {goog.ui.Menu} Color menu.
  */
-imaya.ui.HSVColorPickerMenuButton.newColorMenu = function(opt_domHelper) {
+imaya.ui.HSVColorPickerMenuButton.newColorMenu = function(opt_domHelper, opt_hue, opt_saturation, opt_value) {
   var menu = new goog.ui.Menu(opt_domHelper);
-  var picker = new imaya.ui.HSVColorPicker();
 
-  menu.addChild(picker, true);
+  menu.addChild(new imaya.ui.HSVColorPicker({
+    'hue': opt_hue,
+    'saturation': opt_saturation,
+    'value': opt_value
+  }), true);
 
   return menu;
 };
 
+imaya.ui.HSVColorPickerMenuButton.prototype.createDom = function() {
+  goog.base(this, 'createDom');
+
+  this.setValue(this.createStyle());
+};
 
 /**
  * Returns the currently selected color (null if none).
@@ -51,20 +63,20 @@ imaya.ui.HSVColorPickerMenuButton.prototype.getSelectedColor = function() {
   return /** @type {string} */ (this.getValue());
 };
 
+imaya.ui.HSVColorPickerMenuButton.prototype.createStyle = function() {
+  return 'rgb(' + imaya.ui.HSVColorPicker.hsvToRgb(this.hsv[0], this.hsv[1], this.hsv[2]).join(',') + ')';
+}
 
 /**
  * Sets the selected color, or clears the selected color if the argument is
  * null or not any of the available color choices.
  * @param {?string} color New color.
  */
-imaya.ui.HSVColorPickerMenuButton.prototype.setSelectedColor = function(color) {
-  this.setValue(color);
+imaya.ui.HSVColorPickerMenuButton.prototype.setSelectedColor = function(hue, saturation, value) {
+  this.hsv = [hue, saturation, value];
+  this.setValue(this.createStyle());
 };
 
-imaya.ui.HSVColorPickerMenuButton.prototype.enterDocument = function() {
-  goog.base(this, 'enterDocument');
-  this.setValue('black');
-};
 
 /**
  * Handles {@link goog.ui.Component.EventType.ACTION} events dispatched by
@@ -103,11 +115,17 @@ imaya.ui.HSVColorPickerMenuButton.prototype.setOpen = function(open, opt_e) {
   var picker;
 
   if (open && this.getItemCount() == 0) {
-    menu = imaya.ui.HSVColorPickerMenuButton.newColorMenu(this.getDomHelper());
+    menu = imaya.ui.HSVColorPickerMenuButton.newColorMenu(this.getDomHelper(), this.hsv[0], this.hsv[1], this.hsv[2]);
     this.setMenu(menu);
     picker = menu.getChildAt(0);
     picker.onChange(function(picker) {
-      menubutton.setValue('rgb(' + picker.getRGB().join(',') + ')');
+      var event = new goog.events.Event(goog.ui.Component.EventType.CHANGE, menubutton);
+
+      menubutton.rgb = picker.getRGB();
+      menubutton.setValue('rgb(' + menubutton.rgb.join(',') + ')');
+
+      event.picker = picker;
+      goog.events.dispatchEvent(this, event);
     });
     this.setValue(/** @type {?string} */ (this.getValue()));
   }

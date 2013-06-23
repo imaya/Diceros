@@ -70,7 +70,7 @@ Diceros.RasterLayer.prototype.event = function(event) {
     case goog.events.EventType.MOUSEDOWN:
       var line, point; // XXX
       // 線のセットアップ
-      line = this.currentLine = new Diceros.BezierAGG(this.app.toolbar.colorButton.getSelectedColor());
+      line = this.currentLine = new Diceros.BezierAGG(this.app.color);
       point = Diceros.Point.createFromEvent(event, this.getCurrentPenSize()); // XXX
 
       line.addControlPoint(point);
@@ -127,7 +127,7 @@ Diceros.RasterLayer.prototype.drawNewLine = function() {
 
     // optimization
     if (typeof line.optimize === 'function') {
-      line.optimize(this.app.toolbar.lineOptimization.getValue() | 0);
+      line.optimize(this.app.lineOptimization);
     }
 
     path = line.path();

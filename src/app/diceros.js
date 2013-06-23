@@ -1,6 +1,5 @@
 /**
  * Paint tool "Diceros"
- * @author IMAYA Yuta
  */
 
 /**
@@ -14,6 +13,7 @@ goog.require('Diceros.LayerWindow');
 goog.require('Diceros.SizerWindow');
 goog.require('Diceros.WindowType');
 goog.require('Diceros.util');
+goog.require('Diceros.Toolbar');
 
 goog.require('imaya.ui.SplitPane');
 goog.require('imaya.ui.GoogleDriveLoadToolbarButton');
@@ -29,12 +29,9 @@ goog.require('goog.ui.ToolbarToggleButton');
 goog.require('goog.ui.ToolbarButton');
 goog.require('goog.ui.SelectionModel');
 
-goog.require('imaya.ui.ToolbarHSVColorPickerMenuButton');
 goog.require('goog.ui.ToolbarColorMenuButton');
 goog.require('goog.ui.ToolbarColorMenuButtonRenderer');
 goog.require('goog.ui.ToolbarSeparator');
-goog.require('goog.ui.Option');
-goog.require('goog.ui.ToolbarSelect');
 
 goog.require('Zlib.CRC32');
 
@@ -98,11 +95,13 @@ Diceros.Application = function(opt_config) {
    */
   this.layoutPanels = {};
   /**
-   * @type {goog.ui.Toolbar}
+   * @type {Diceros.Toolbar}
    */
   this.toolbar;
   /** @type {Object} */
   this.save;
+  /** @type {string} */
+  this.color;
 };
 
 /**
@@ -265,10 +264,6 @@ Diceros.Application.prototype.makeCanvas = function(width, height) {
   canvas.width = width;
   canvas.height = height;
 
-  var ctx = canvas.getContext('2d');
-  ctx.getImageData(0, 0, 1, 1);
-  ctx.transform(1,0,0,1,0,0);
-
   return canvas;
 };
 
@@ -314,392 +309,19 @@ Diceros.Application.prototype.setEvent = function() {
  */
 Diceros.Application.prototype.createToolbar = function() {
   /** @type {goog.ui.Toolbar} */
-  var toolbar = this.toolbar = new goog.ui.Toolbar();
+  var toolbar = this.toolbar = new Diceros.Toolbar(this);
 
-  // colorpicker
-  this.appendColorPickerButton(toolbar);
-
-  // separator
-  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
-
-  // mode switch button
-  this.appendEditModeButton(toolbar);
-
-  // separator
-  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
-
-  // line optimization
-  this.appendOptimizationButton(toolbar);
-
-  // save/load
-  this.appendSaveButton_(toolbar);
-  this.appendLoadButton_(toolbar);
-
-  // separator
-  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
-
-  // capture event target
-  this.appendCaptureButton(toolbar);
-
-  // ignore touch
-  this.getCurrentCanvasWindow().setIgnoreTouch(false);
-  this.appendIgnoreTouchButton_(toolbar);
-
-  // separator
-  toolbar.addChild(new goog.ui.ToolbarSeparator(), true);
-
-  this.appendPointerModeButton_(toolbar);
-
-  // rendering
-  this.refreshToolbar();
   toolbar.render(this.target);
 };
 
-/**
- * @param {goog.ui.Toolbar} toolbar
- */
-Diceros.Application.prototype.appendColorPickerButton = function(toolbar) {
-  toolbar.colorButton = new imaya.ui.ToolbarHSVColorPickerMenuButton('Color');
-  toolbar.colorButton.setSelectedColor('red');
-  toolbar.addChild(toolbar.colorButton, true);
-};
-
-/**
- * @param {goog.ui.Toolbar} toolbar
- */
-Diceros.Application.prototype.appendEditModeButton = function(toolbar) {
-  /** @type {Diceros.Application} */
-  var app = this;
-  /** @type {goog.ui.SelectionModel} */
-  var selectionModel = new goog.ui.SelectionModel();
-
-  toolbar.modeButtons = {
-    '描画': {
-      value: Diceros.VectorLayer.Mode.DEFAULT,
-      button: void 0
-    },
-    '編集': {
-      value: Diceros.VectorLayer.Mode.EDIT,
-      button: void 0
-    },
-    '削除': {
-      value: Diceros.VectorLayer.Mode.DELETE,
-      button: void 0
-    },
-    '太さ変更': {
-      value: Diceros.VectorLayer.Mode.WIDTH_UPDATE,
-      button: void 0
-    }
-  };
-
-  selectionModel.setSelectionHandler(function(button, select) {
-    button && button.setChecked(select);
-  });
-
-  goog.object.forEach(
-    toolbar.modeButtons,
-    function(obj, caption) {
-      var button = app.toolbar.modeButtons[caption].button =
-        new goog.ui.ToolbarToggleButton(caption);
-
-      button.setValue(obj.value);
-      button.setAutoStates(goog.ui.Component.State.CHECKED, false);
-      selectionModel.addItem(button);
-      toolbar.addChild(button, true);
-      goog.events.listen(
-        button, goog.ui.Component.EventType.ACTION, onClickSelectButton);
-    }
-  );
-
-  function onClickSelectButton(e) {
-    var canvasWindow = app.windows[app.currentCanvasWindow];
-    var currentLayer = canvasWindow.layers[canvasWindow.currentLayer];
-
-    selectionModel.setSelectedItem(e.target);
-
-    if (currentLayer instanceof Diceros.VectorLayer) {
-      currentLayer.baseMode = currentLayer.mode = e.target.getValue();
-      currentLayer.switchMode(currentLayer.mode);
-    }
-
-    app.refreshToolbar();
-  }
-};
-
-/**
- * @param {goog.ui.Toolbar} toolbar
- */
-Diceros.Application.prototype.appendOptimizationButton = function(toolbar) {
-  var optimizationMenu = new goog.ui.Menu();
-  /** @type {number} */
-  var i;
-
-  for (i = 0; i <= 10; ++i) {
-    optimizationMenu.addChild(new goog.ui.Option(""+i), true);
-  }
-
-  var selector = new goog.ui.ToolbarSelect('線の補正', optimizationMenu);
-
-  selector.setTooltip('線の補正');
-  toolbar.addChild(selector, true);
-  toolbar.lineOptimization = selector;
-
-  goog.dom.classes.add(selector.getElement(), 'goog-toolbar-select');
-};
-
-/**
- * @param {goog.ui.Toolbar} toolbar
- */
-Diceros.Application.prototype.appendCaptureButton = function(toolbar) {
-  /** @type {Diceros.Application} */
-  var app = this;
-  /** @type {goog.ui.SelectionModel} */
-  var selectionModel = new goog.ui.SelectionModel();
-
-  toolbar.captureButtons = {
-    'Mouse': {
-      value: Diceros.CanvasWindow.CaptureEventType.MOUSE,
-      button: void 0
-    },
-    'Touch': {
-      value: Diceros.CanvasWindow.CaptureEventType.TOUCH,
-      button: void 0
-    },
-    'Pen(PointerEvents)': {
-      value: Diceros.CanvasWindow.CaptureEventType.POINTER,
-      button: void 0
-    }
-  };
-
-  selectionModel.setSelectionHandler(function(button, select) {
-    button && button.setChecked(select);
-  });
-
-  goog.object.forEach(
-    toolbar.captureButtons,
-    function(obj, caption) {
-      var button = toolbar.captureButtons[caption].button =
-        new goog.ui.ToolbarToggleButton(caption);
-
-      button.setValue(obj.value);
-      button.setAutoStates(goog.ui.Component.State.CHECKED, false);
-      selectionModel.addItem(button);
-      toolbar.addChild(button, true);
-      goog.events.listen(
-        button, goog.ui.Component.EventType.ACTION, onClickSelectButton);
-    }
-  );
-
-  function onClickSelectButton(e) {
-    var canvasWindow = app.windows[app.currentCanvasWindow];
-
-    selectionModel.setSelectedItem(e.target);
-    canvasWindow.setCaptureEventType(e.target.getValue());
-    app.refreshToolbar();
-  }
-};
-
 Diceros.Application.prototype.refreshToolbar = function() {
-  /** @type {goog.ui.Toolbar} */
-  var toolbar = this.toolbar;
-  /** @type {Array.<string>} */
-  var keys = Object.keys(toolbar.modeButtons);
-  /** @type {string} */
-  var key;
-  /** @type {number} */
-  var i;
-  /** @type {number} */
-  var il;
-  /** @type {goog.ui.ToolbarToggleButton} */
-  var button;
-  /** @type {Diceros.CanvasWindow} */
-  var currentCanvasWindow = this.getCurrentCanvasWindow();
-  /** @type {Diceros.Layer} */
-  var currentLayer = currentCanvasWindow.getCurrentLayer();
-  /** @type {boolean} */
-  var isVector = currentLayer instanceof Diceros.VectorLayer;
-
-  // mode buttons
-  for (i = 0, il = keys.length; i < il; ++i) {
-    key = keys[i];
-    button = toolbar.modeButtons[key].button;
-
-    if (isVector) {
-      button.setEnabled(true);
-      button.setChecked(
-        currentLayer.mode === button.getValue()
-      );
-    } else {
-      button.setEnabled(false);
-    }
-  }
-
-  if (currentCanvasWindow.getCaptureEventType() !== void 0) {
-    goog.object.forEach(toolbar.captureButtons, function(value, key) {
-      if (value.value === currentCanvasWindow.getCaptureEventType()) {
-        value.button.setChecked(true);
-      } else {
-        value.button.setChecked(false);
-      }
-    });
-  }
-
-  if (currentCanvasWindow.pointerMode !== void 0) {
-    goog.object.forEach(toolbar.capturePointerModeButtons, function(value, key) {
-      console.log(value.value, currentCanvasWindow.pointerMode);
-      if (value.value === currentCanvasWindow.pointerMode) {
-        value.button.setChecked(true);
-      } else {
-        value.button.setChecked(false);
-      }
-    });
-  }
-};
-
-/**
- * @param {goog.ui.Toolbar} toolbar
- * @private
- */
-Diceros.Application.prototype.appendSaveButton_ = function(toolbar) {
-  /** @type {Diceros.Application} */
-  var app = this;
-  /** @type {imaya.ui.GoogleDriveSaveToolbarButton} */
-  var button = new imaya.ui.GoogleDriveSaveToolbarButton('Save');
-  /** @type {Diceros.CanvasWindow} */
-  var cw = this.getCurrentCanvasWindow();
-
-  button.setClientId('663668731705.apps.googleusercontent.com');
-  button.setScope('https://www.googleapis.com/auth/drive');
-
-  // event handler
-  button.setCallback(function(token) {
-    button.save(Date.now() + '.png', function() {
-      /** @type {HTMLCanvasElement} */
-      var canvas = cw.createMergedCanvas();
-      /** @type {string} */
-      var dataURL = canvas.toDataURL();
-      /** @type {Array.<string>} */
-      var base64 = dataURL.split(',', 2);
-      /** @type {string} */
-      var dataString = window.atob(base64[1]);
-      /** @type {Uint8Array} */
-      var dataArray = app.stringToByteArray(dataString);
-      /** @type {Uint8Array} */
-      var inserted = app.insertDicerosChunk(dataArray, JSON.stringify(cw.toObject()));
-
-      return inserted;
-    }, 'image/png', function() {
-      // done
-    });
-  });
-
-  toolbar.addChild(button, true);
-};
-
-/**
- * @param {goog.ui.Toolbar} toolbar
- * @private
- */
-Diceros.Application.prototype.appendLoadButton_ = function(toolbar) {
-  /** @type {imaya.ui.GoogleDriveLoadToolbarButton} */
-  var button = new imaya.ui.GoogleDriveLoadToolbarButton('Load');
-
-  button.setClientId('663668731705.apps.googleusercontent.com');
-  button.setScope('https://www.googleapis.com/auth/drive');
-  button.setResponseType('arraybuffer');
-
-  // event handler
-  button.setCallback(function(data) {
-    var json = this.extractJsonFromPNG(new Uint8Array(data));
-
-    // load done
-    this.refreshFromObject(
-      JSON.parse(
-        json
-      )
-    );
-  }.bind(this));
-
-  toolbar.addChild(button, true);
-};
-
-/**
- * @param {goog.ui.Toolbar} toolbar
- * @private
- */
-Diceros.Application.prototype.appendIgnoreTouchButton_ = function(toolbar) {
-  /** @type {Diceros.Application} */
-  var app = this;
-  /** @type {goog.ui.ToolbarToggleButton} */
-  var button = new goog.ui.ToolbarToggleButton('Ignore Touch (PointerEvents)');
-
-  // event handler
-  goog.events.listen(button, goog.ui.Component.EventType.ACTION, function(ev) {
-    /** @type {boolean} */
-    var disable = ev.target.isChecked();
-
-    app.getCurrentCanvasWindow().setIgnoreTouch(disable);
-  });
-
-  toolbar.addChild(button, true);
+  this.toolbar.refresh();
 };
 
 
-/**
- * @param {goog.ui.Toolbar} toolbar
- */
-Diceros.Application.prototype.appendPointerModeButton_ = function(toolbar) {
-  /** @type {Diceros.Application} */
-  var app = this;
-  /** @type {goog.ui.SelectionModel} */
-  var selectionModel = new goog.ui.SelectionModel();
 
-  toolbar.capturePointerModeButtons = {
-    'Pen': {
-      value: Diceros.CanvasWindow.PointerMode.Draw,
-      class: 'icon-pen',
-      button: void 0
-    },
-    'Move': {
-      value: Diceros.CanvasWindow.PointerMode.Move,
-      class: 'icon-hand',
-      button: void 0
-    }
-  };
 
-  selectionModel.setSelectionHandler(function(button, select) {
-    button && button.setChecked(select);
-  });
 
-  goog.object.forEach(
-    toolbar.capturePointerModeButtons,
-    function(obj, caption) {
-      /** @type {!HTMLElement} */
-      var value = goog.dom.createDom('span');
-      /** @type {goog.ui.ToolbarToggleButton} */
-      var button = toolbar.capturePointerModeButtons[caption].button =
-        new goog.ui.ToolbarToggleButton(caption);
-
-      goog.dom.classes.add(value, obj.class);
-
-      button.setContent(value);
-      button.setValue(obj.value);
-      button.setAutoStates(goog.ui.Component.State.CHECKED, false);
-      selectionModel.addItem(button);
-      toolbar.addChild(button, true);
-      goog.events.listen(
-        button, goog.ui.Component.EventType.ACTION, onClickSelectButton);
-    }
-  );
-
-  function onClickSelectButton(e) {
-    var canvasWindow = app.windows[app.currentCanvasWindow];
-
-    selectionModel.setSelectedItem(e.target);
-    canvasWindow.setPointerMode(e.target.getValue());
-    app.refreshToolbar();
-  }
-};
 
 Diceros.Application.prototype.refreshFromObject = function(obj) {
   /** @type {number} */

@@ -21,11 +21,11 @@ imaya.ui.HSVColorPicker = function(opt_params) {
   /** @type {number} */
   this.pointerWidth= opt_params['pointerWidth'] || 5;
   /** @type {number} */
-  this.hue = 0;
+  this.hue = typeof opt_params['hue'] === 'number' ? opt_params['hue'] : 0;
   /** @type {number} */
   this.saturation = typeof opt_params['saturation'] === 'number' ? opt_params['saturation'] : 1;
   /** @type {number} */
-  this.value = typeof opt_params['saturation'] === 'number' ? opt_params['saturation'] : 0;
+  this.value = typeof opt_params['value'] === 'number' ? opt_params['value'] : 0;
   /** @type {number} */
   this.svWidth;
   /** @type {number} */
@@ -94,7 +94,7 @@ imaya.ui.HSVColorPicker.prototype.getHSV = function() {
 };
 
 imaya.ui.HSVColorPicker.prototype.getRGB = function() {
-  return this.hsvToRgb(this.hue, this.saturation, this.value);
+  return imaya.ui.HSVColorPicker.hsvToRgb(this.hue, this.saturation, this.value);
 };
 
 imaya.ui.HSVColorPicker.prototype.onChange = function(callback) {
@@ -203,7 +203,6 @@ imaya.ui.HSVColorPicker.prototype.eventHandler = function(ev) {
           this.onChangeCallback(this);
         }
       }
-
       break;
     case 'touchmove':
     /* FALLTHROUGH */
@@ -382,7 +381,7 @@ imaya.ui.HSVColorPicker.prototype.renderHueCircle = function() {
       }
 
       var rad = Math.atan2(y - centerY, x - centerX);
-      var rgb = this.hsvToRgb(this.radToAngle_(rad), 1, 1);
+      var rgb = imaya.ui.HSVColorPicker.hsvToRgb(this.radToAngle_(rad), 1, 1);
 
       for (i = 0; i < 3; ++i) {
         pixelArray[(x + y * width) * 4 + i] = rgb[i];
@@ -521,7 +520,7 @@ imaya.ui.HSVColorPicker.prototype.renderSVBox2 = function() {
 
   for (y = 0; y < svHeight; ++y) {
     for (x = 0; x < svWidth; ++x) {
-      rgb = this.hsvToRgb(
+      rgb = imaya.ui.HSVColorPicker.hsvToRgb(
         hue,
         1 - x / (svWidth - 1),
         1 - y / (svHeight - 1)
@@ -553,7 +552,7 @@ imaya.ui.HSVColorPicker.prototype.radToAngle_ = function(rad) {
  * @param {number} value
  * @returns {Array.<number>}
  */
-imaya.ui.HSVColorPicker.prototype.hsvToRgb = function(hue, saturation, value) {
+imaya.ui.HSVColorPicker.hsvToRgb = function(hue, saturation, value) {
   /** @type {number} */
   var hi;
   /** @type {number} */
