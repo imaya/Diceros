@@ -89,10 +89,16 @@ imaya.ui.HSVColorPicker.prototype.createDom = function() {
   this.getContentElement().appendChild(this.svPointer);
 };
 
+/**
+ * @returns {Array.<number, number, number>}
+ */
 imaya.ui.HSVColorPicker.prototype.getHSV = function() {
   return [this.hue, this.saturation, this.value];
 };
 
+/**
+ * @returns {Array.<number>}
+ */
 imaya.ui.HSVColorPicker.prototype.getRGB = function() {
   return imaya.ui.HSVColorPicker.hsvToRgb(this.hue, this.saturation, this.value);
 };
@@ -249,6 +255,12 @@ imaya.ui.HSVColorPicker.prototype.eventHandler = function(ev) {
   }
 };
 
+/**
+ * @param {number} x
+ * @param {number} y
+ * @returns {number}
+ * @private
+ */
 imaya.ui.HSVColorPicker.prototype.calcHue_ = function(x, y) {
   /** @type {number} */
   var size = this.size;
@@ -267,19 +279,29 @@ imaya.ui.HSVColorPicker.prototype.setHue = function(hue) {
   this.renderSVBox();
 };
 
+/**
+ * @param {number} x
+ * @returns {number}
+ * @private
+ */
 imaya.ui.HSVColorPicker.prototype.calcSaturation_ = function(x) {
   /** @type {number} */
   var saturation = 1 - (x - this.svLeftTopX) / this.svWidth;
 
   return saturation < 0 ? 0 :
-    saturation > 1 ? 1 :
-      saturation;
+         saturation > 1 ? 1 :
+         saturation;
 };
 
 imaya.ui.HSVColorPicker.prototype.setSaturation = function(saturation) {
   this.saturation = saturation;
 };
 
+/**
+ * @param {number} y
+ * @returns {number}
+ * @private
+ */
 imaya.ui.HSVColorPicker.prototype.calcValue_ = function(y) {
   /** @type {number} */
   var value = 1 - (y - this.svLeftTopX) / this.svWidth;

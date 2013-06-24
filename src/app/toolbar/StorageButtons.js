@@ -3,24 +3,62 @@ goog.provide('Diceros.ToolbarItem.StorageButton');
 goog.require('Diceros.ToolbarItem.Base');
 goog.require('imaya.ui.GoogleDriveSaveToolbarButton');
 goog.require('imaya.ui.GoogleDriveLoadToolbarButton');
+goog.require('goog.ui.Menu');
+goog.require('goog.ui.ToolbarMenuButton');
+
+goog.require('goog.ui.FlatButtonRenderer');
+goog.require('goog.ui.CustomButtonRenderer');
 
 goog.scope(function() {
 
 /**
  * @param {Diceros.Application} app
  * @constructor
- * @extends {Diceros.ToolbarItem.Base}
+ * @implements {Diceros.ToolbarItem.Base}
  */
 Diceros.ToolbarItem.StorageButton = function(app) {
   /** @type {Diceros.Application} */
   this.app = app;
   /** @type {goog.ui.Toolbar} */
   this.toolbar = app.toolbar;
+  /** @type {goog.ui.Menu} */
+  this.menu;
+  /** @type {goog.ui.MenuItem} */
+  this.save;
+  /** @type {goog.ui.MenuItem} */
+  this.load;
 };
 
 Diceros.ToolbarItem.StorageButton.prototype.decorate = function() {
-  this.appendSaveButton_();
-  this.appendLoadButton_();
+  /** @type {goog.ui.Menu} */
+  var menu = new goog.ui.Menu();
+  /** @type {goog.ui.ToolbarMenuButton} */
+  var menuButton = new goog.ui.ToolbarMenuButton('ストレージ', menu);
+  /** @type {goog.ui.MenuItem} */
+  var saveMenuItem;
+  /** @type {imaya.ui.GoogleDriveSaveButton} */
+  var saveButton;
+  /** @type {goog.ui.MenuItem} */
+  var loadMenuItem;
+  /** @type {imaya.ui.GoogleDriveLoadButton} */
+  var loadButton;
+
+  // save
+  saveMenuItem = this.save = new goog.ui.MenuItem('');
+  saveButton = this.createSaveButton_();
+  saveMenuItem.addChild(saveButton, true);
+  menu.addChild(saveMenuItem, true);
+
+  // load
+  loadMenuItem = this.load = new goog.ui.MenuItem('');
+  loadButton = this.createLoadButton_();
+  loadMenuItem.addChild(loadButton, true);
+  menu.addChild(loadMenuItem, true);
+
+  // tooltip
+  menuButton.setTooltip('ストレージ');
+
+  this.toolbar.addChild(menuButton, true);
 };
 
 /**
@@ -36,15 +74,14 @@ Diceros.ToolbarItem.StorageButton.ScopeUrl =
   'https://www.googleapis.com/auth/drive';
 
 /**
+ * @returns {imaya.ui.GoogleDriveSaveButton}
  * @private
  */
-Diceros.ToolbarItem.StorageButton.prototype.appendSaveButton_ = function() {
+Diceros.ToolbarItem.StorageButton.prototype.createSaveButton_ = function() {
   /** @type {Diceros.Application} */
   var app = this.app;
-  /** @type {goog.ui.Toolbar} */
-  var toolbar = this.toolbar;
-  /** @type {imaya.ui.GoogleDriveSaveToolbarButton} */
-  var button = new imaya.ui.GoogleDriveSaveToolbarButton('Save');
+  /** @type {imaya.ui.GoogleDriveSaveButton} */
+  var button = new imaya.ui.GoogleDriveSaveButton('Save to Google Drive');
   /** @type {Diceros.CanvasWindow} */
   var canvasWindow = app.getCurrentCanvasWindow();
 
@@ -71,17 +108,16 @@ Diceros.ToolbarItem.StorageButton.prototype.appendSaveButton_ = function() {
     });
   });
 
-  toolbar.addChild(button, true);
+  return button;
 };
 
 /**
+ * @returns {imaya.ui.GoogleDriveLoadButton}
  * @private
  */
-Diceros.ToolbarItem.StorageButton.prototype.appendLoadButton_ = function() {
-  /** @type {goog.ui.Toolbar} */
-  var toolbar = this.toolbar;
-  /** @type {imaya.ui.GoogleDriveLoadToolbarButton} */
-  var button = new imaya.ui.GoogleDriveLoadToolbarButton('Load');
+Diceros.ToolbarItem.StorageButton.prototype.createLoadButton_ = function() {
+  /** @type {imaya.ui.GoogleDriveLoadButton} */
+  var button = new imaya.ui.GoogleDriveLoadButton('Load from Google Drive');
 
   button.setClientId(Diceros.ToolbarItem.StorageButton.ClientId);
   button.setScope(Diceros.ToolbarItem.StorageButton.ScopeUrl);
@@ -99,7 +135,7 @@ Diceros.ToolbarItem.StorageButton.prototype.appendLoadButton_ = function() {
     );
   }.bind(this));
 
-  toolbar.addChild(button, true);
+  return button;
 };
 
 Diceros.ToolbarItem.StorageButton.prototype.refresh = function() {

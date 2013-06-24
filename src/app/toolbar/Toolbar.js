@@ -19,7 +19,7 @@ Diceros.Toolbar = function(app) {
 
   /** @type {Diceros.Application} */
   this.app = app;
-  /** @type {Array.<Diceros.Toolbar.Base>} */
+  /** @type {Array.<Diceros.ToolbarItem.Base>} */
   this.buttons = [];
 
   /** @type {Diceros.ToolbarItem.ColorPickerButton} */
@@ -40,6 +40,14 @@ goog.inherits(Diceros.Toolbar, goog.ui.Toolbar);
 Diceros.Toolbar.prototype.createDom = function() {
   goog.base(this, 'createDom');
 
+  /** @type {Diceros.ToolbarItem.StorageButton} */
+  var storageButon = this.storage = new Diceros.ToolbarItem.StorageButton(this.app);
+  storageButon.decorate();
+  storageButon.refresh();
+
+  // separator
+  this.addChild(new goog.ui.ToolbarSeparator(), true);
+
   /** @type {Diceros.ToolbarItem.ColorPickerButton} */
   var colorPicker = this.colorPicker = new Diceros.ToolbarItem.ColorPickerButton(this.app);
   colorPicker.decorate();
@@ -53,18 +61,10 @@ Diceros.Toolbar.prototype.createDom = function() {
   editMode.decorate();
   editMode.refresh();
 
-  // separator
-  this.addChild(new goog.ui.ToolbarSeparator(), true);
-
   /** @type {Diceros.ToolbarItem.LineOptimizationButton} */
   var lineOptimization = this.lineOptimization = new Diceros.ToolbarItem.LineOptimizationButton(this.app);
   lineOptimization.decorate();
   lineOptimization.refresh();
-
-  /** @type {Diceros.ToolbarItem.StorageButton} */
-  var storageButon = this.storage = new Diceros.ToolbarItem.StorageButton(this.app);
-  storageButon.decorate();
-  storageButon.refresh();
 
   // separator
   this.addChild(new goog.ui.ToolbarSeparator(), true);

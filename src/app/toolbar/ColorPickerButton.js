@@ -8,7 +8,7 @@ goog.scope(function() {
 /**
  * @param {Diceros.Application} app
  * @constructor
- * @extends {Diceros.ToolbarItem.Base}
+ * @implements {Diceros.ToolbarItem.Base}
  */
 Diceros.ToolbarItem.ColorPickerButton = function(app) {
   /** @type {Diceros.Application} */

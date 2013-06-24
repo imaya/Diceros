@@ -9,9 +9,9 @@ goog.scope(function() {
  * ベジェ曲線の作成
  * 制御点の設定は AGG Project の手法を使用する
  * http://www.antigrain.com/research/bezier_interpolation/index.html
- * @extends Diceros.Line
+ * @extends {Diceros.Line}
  * @constructor
- * @param {string=} opt_color 線の描画色.
+ * @param {?string=} opt_color 線の描画色.
  */
 Diceros.BezierAGG = function(opt_color) {
   goog.base(this, opt_color);

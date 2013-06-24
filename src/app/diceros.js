@@ -100,7 +100,7 @@ Diceros.Application = function(opt_config) {
   this.toolbar;
   /** @type {Object} */
   this.save;
-  /** @type {string} */
+  /** @type {?string} */
   this.color;
 };
 

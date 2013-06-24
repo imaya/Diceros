@@ -9,8 +9,8 @@ goog.scope(function() {
 
 /**
  * @param content
- * @param opt_renderer
- * @param opt_domHelper
+ * @param {goog.ui.ButtonRenderer=} opt_renderer
+ * @param {goog.dom.DomHelper=} opt_domHelper
  * @constructor
  * @extends {goog.ui.Button}
  */

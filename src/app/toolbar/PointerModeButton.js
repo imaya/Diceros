@@ -12,7 +12,7 @@ goog.scope(function() {
 /**
  * @param {Diceros.Application} app
  * @constructor
- * @extends {Diceros.ToolbarItem.Base}
+ * @implements {Diceros.ToolbarItem.Base}
  */
 Diceros.ToolbarItem.PointerModeButton = function(app) {
   /** @type {Diceros.Application} */
@@ -52,10 +52,12 @@ Diceros.ToolbarItem.PointerModeButton.prototype.decorate = function() {
     this.buttons,
     function(obj) {
       /** @type {!HTMLElement} */
-      var value = goog.dom.createDom('span');
+      var value =
+        /** @type {!HTMLElement} */
+        (goog.dom.createDom('span'));
       /** @type {goog.ui.ToolbarToggleButton} */
       var button = obj.button =
-        new goog.ui.ToolbarToggleButton();
+        new goog.ui.ToolbarToggleButton(obj.value);
 
       goog.dom.classes.add(value, obj.class);
 
@@ -84,14 +86,14 @@ Diceros.ToolbarItem.PointerModeButton.prototype.refresh = function() {
 };
 
 /**
- * @param {goog.events.BrowserEvent} event
+ * @param {goog.events.Event} event
  * @private
  */
 Diceros.ToolbarItem.PointerModeButton.prototype.handleAction_ = function(event) {
   /** @type {Diceros.Window} */
   var canvasWindow = this.app.getCurrentCanvasWindow();
 
-  this.selectionModel.setSelectedItem(event.target);
+  this.selectionModel.setSelectedItem(/** @type {?Object} */(event.target));
   canvasWindow.setPointerMode(event.target.getValue());
   this.refresh();
 };

@@ -37,3 +37,8 @@ thead.googl-drive-save-dialog-header {
 thead.googl-drive-save-dialog-header > tr > th {
     padding: 0 1em;
 }
+
+.goog-menuitem button {
+    border: 0;
+    background-color: rgba(0, 0, 0, 0);
+}

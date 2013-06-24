@@ -4,7 +4,7 @@ goog.scope(function() {
 
 /**
  * 線描画抽象クラス
- * @param {string=} opt_color 線の描画色
+ * @param {?string=} opt_color 線の描画色
  * @constructor
  */
 Diceros.Line = function(opt_color) {
@@ -22,7 +22,7 @@ Diceros.Line = function(opt_color) {
   this.ctrlPoints = [];
 
   /**
-   * @type {(string|undefined)}
+   * @type {(?string|undefined)}
    */
   this.color = opt_color;
 };

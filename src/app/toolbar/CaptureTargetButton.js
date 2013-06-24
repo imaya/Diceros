@@ -12,7 +12,7 @@ goog.scope(function() {
 /**
  * @param {Diceros.Application} app
  * @constructor
- * @extends {Diceros.ToolbarItem.Base}
+ * @implements {Diceros.ToolbarItem.Base}
  */
 Diceros.ToolbarItem.CaptureTargetButton = function(app) {
   /** @type {Diceros.Application} */
@@ -30,6 +30,9 @@ Diceros.ToolbarItem.CaptureTargetButton.prototype.decorate = function() {
   var toolbar = this.toolbar;
   /** @type {goog.ui.SelectionModel} */
   var selectionModel = this.selectionModel = new goog.ui.SelectionModel();
+  /** @type {goog.ui.Menu} */
+  var menu = new goog.ui.Menu();
+  var menuButton = new goog.ui.MenuButton('入力方法', menu);
 
   this.buttons = {
     'Mouse': {
@@ -54,12 +57,14 @@ Diceros.ToolbarItem.CaptureTargetButton.prototype.decorate = function() {
     this.buttons,
     function(obj, caption) {
       var button = obj.button =
-        new goog.ui.ToolbarToggleButton(caption);
+        new goog.ui.MenuItem(caption);
 
+      button.setCheckable(true);
       button.setValue(obj.value);
       button.setAutoStates(goog.ui.Component.State.CHECKED, false);
       selectionModel.addItem(button);
-      toolbar.addChild(button, true);
+      menu.addChild(button, true);
+
       goog.events.listen(
         button,
         goog.ui.Component.EventType.ACTION,
@@ -69,16 +74,22 @@ Diceros.ToolbarItem.CaptureTargetButton.prototype.decorate = function() {
     this
   );
 
-  this.appendIgnoreTouchButton_();
+  menu.addChild(new goog.ui.MenuSeparator(), true);
+
+  this.appendIgnoreTouchButton_(menu);
+
+  toolbar.addChild(menuButton, true);
 };
 
-Diceros.ToolbarItem.CaptureTargetButton.prototype.appendIgnoreTouchButton_ = function() {
+Diceros.ToolbarItem.CaptureTargetButton.prototype.appendIgnoreTouchButton_ = function(menu) {
   /** @type {Diceros.Application} */
   var app = this.app;
   /** @type {goog.ui.Toolbar} */
   var toolbar = this.toolbar;
-  /** @type {goog.ui.ToolbarToggleButton} */
-  var button = new goog.ui.ToolbarToggleButton('Ignore Touch (PointerEvents)');
+  /** @type {goog.ui.MenuItem} */
+  var button = new goog.ui.MenuItem('Ignore Touch (PointerEvents)');
+
+  button.setCheckable(true);
 
   // event handler
   goog.events.listen(button, goog.ui.Component.EventType.ACTION, function(event) {
@@ -88,7 +99,7 @@ Diceros.ToolbarItem.CaptureTargetButton.prototype.appendIgnoreTouchButton_ = fun
     app.getCurrentCanvasWindow().setIgnoreTouch(disable);
   });
 
-  toolbar.addChild(button, true);
+  menu.addChild(button, true);
 };
 
 Diceros.ToolbarItem.CaptureTargetButton.prototype.refresh = function() {
@@ -101,13 +112,13 @@ Diceros.ToolbarItem.CaptureTargetButton.prototype.refresh = function() {
 };
 
 /**
- * @param {goog.events.BrowserEvent} event
+ * @param {goog.events.Event} event
  * @private
  */
 Diceros.ToolbarItem.CaptureTargetButton.prototype.handleAction_ = function(event) {
   var canvasWindow = this.app.getCurrentCanvasWindow();
 
-  this.selectionModel.setSelectedItem(event.target);
+  this.selectionModel.setSelectedItem(/** @type {?Object} */(event.target));
   canvasWindow.setCaptureEventType(event.target.getValue());
   this.refresh();
 };

@@ -25,6 +25,7 @@ imaya.ui.HSVColorPickerMenuButton =
 function(content, opt_menu, opt_renderer, opt_domHelper) {
   goog.base(this, content, opt_menu, opt_renderer || goog.ui.ColorMenuButtonRenderer.getInstance(), opt_domHelper);
 
+  /** @type {Array.<number>} */
   this.hsv = [180, 1, 1];
 };
 goog.inherits(imaya.ui.HSVColorPickerMenuButton, goog.ui.MenuButton);
@@ -35,6 +36,9 @@ goog.inherits(imaya.ui.HSVColorPickerMenuButton, goog.ui.MenuButton);
  * containing default color palettes.
  * @param {goog.dom.DomHelper=} opt_domHelper Optional DOM hepler, used for
  *     document interaction.
+ * @param {number=} opt_hue
+ * @param {number=} opt_saturation
+ * @param {number=} opt_value
  * @return {goog.ui.Menu} Color menu.
  */
 imaya.ui.HSVColorPickerMenuButton.newColorMenu = function(opt_domHelper, opt_hue, opt_saturation, opt_value) {
@@ -57,7 +61,7 @@ imaya.ui.HSVColorPickerMenuButton.prototype.createDom = function() {
 
 /**
  * Returns the currently selected color (null if none).
- * @return {?string} The selected color.
+ * @return {string} The selected color.
  */
 imaya.ui.HSVColorPickerMenuButton.prototype.getSelectedColor = function() {
   return /** @type {string} */ (this.getValue());
@@ -65,12 +69,11 @@ imaya.ui.HSVColorPickerMenuButton.prototype.getSelectedColor = function() {
 
 imaya.ui.HSVColorPickerMenuButton.prototype.createStyle = function() {
   return 'rgb(' + imaya.ui.HSVColorPicker.hsvToRgb(this.hsv[0], this.hsv[1], this.hsv[2]).join(',') + ')';
-}
+};
 
 /**
  * Sets the selected color, or clears the selected color if the argument is
  * null or not any of the available color choices.
- * @param {?string} color New color.
  */
 imaya.ui.HSVColorPickerMenuButton.prototype.setSelectedColor = function(hue, saturation, value) {
   this.hsv = [hue, saturation, value];

@@ -10,7 +10,7 @@ goog.scope(function() {
 /**
  * @param {Diceros.Application} app
  * @constructor
- * @extends {Diceros.ToolbarItem.Base}
+ * @implements {Diceros.ToolbarItem.Base}
  */
 Diceros.ToolbarItem.LineOptimizationButton = function(app) {
   /** @type {Diceros.Application} */
