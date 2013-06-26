@@ -5,6 +5,7 @@ goog.require('goog.events');
 goog.require('goog.events.EventType');
 goog.require('goog.events.MouseWheelHandler');
 goog.require('goog.style');
+goog.require('goog.math.Matrix');
 
 goog.require('Diceros.Window');
 goog.require('Diceros.VectorLayer');
@@ -92,6 +93,28 @@ function(app, index, opt_width, opt_height) {
    * @type {Diceros.CanvasWindow.PointerMode}
    */
   this.pointerMode = Diceros.CanvasWindow.PointerMode.Draw;
+
+  /**
+   * ビュー変換の起点 X 座標.
+   * @type {number}
+   */
+  this.originX = 0;
+
+  /**
+   * ビュー変換の起点 Y 座標.
+   * @type {number}
+   */
+  this.originY = 0;
+
+  /**
+   * ビューの変換行列
+   * @type {goog.math.Matrix}
+   */
+  this.matrix = new goog.math.Matrix([
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+  ]);
 
   // line buffer
   Diceros.BezierAGG.BufferCanvas.width = this.width;
@@ -282,9 +305,11 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
       return;
     }
 
+    enchantPoint(event);
+
     switch (canvasWindow.pointerMode) {
       case Diceros.CanvasWindow.PointerMode.Draw:
-        event.target !== canvasWindow.element && layer && layer.event(event);
+        layer && layer.event(event);
         break;
       case Diceros.CanvasWindow.PointerMode.Move:
         if (canvasWindow.drag) {
@@ -329,11 +354,12 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
       return;
     }
 
+    enchantPoint(event);
     canvasWindow.drag = true;
 
     switch (canvasWindow.pointerMode) {
       case Diceros.CanvasWindow.PointerMode.Draw:
-        event.target !== canvasWindow.element && layer && layer.event(event);
+        layer && layer.event(event);
         break;
       case Diceros.CanvasWindow.PointerMode.Move:
         canvasWindow.prevEvent = event;
@@ -360,9 +386,11 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
       return;
     }
 
+    enchantPoint(event);
+
     switch (canvasWindow.pointerMode) {
       case Diceros.CanvasWindow.PointerMode.Draw:
-        event.target !== canvasWindow.element && layer && drag && layer.event(event);
+        layer && drag && layer.event(event);
         break;
       case Diceros.CanvasWindow.PointerMode.Move:
         break;
@@ -377,15 +405,14 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
     goog.events.EventType.MSPOINTEROUT :
     goog.events.EventType.MOUSEOUT
   ] = function(event) {
-    var offset = goog.style.getPageOffset(canvasWindow.element),
-        x = event.pageX - offset.x,
-        y = event.pageY - offset.y;
-
     event.preventDefault();
 
+    enchantPoint(event);
+
     // 要素内の範囲内の場合は除外
-    if (x >= 0 && x < canvasWindow.canvasBase.width() &&
-        y >= 0 && y < canvasWindow.canvasBase.height()) {
+    var rect = canvasWindow.element.getBoundingClientRect();
+    if (event.clientX >= rect.left && event.clientX <= rect.left + rect.width &&
+        event.clientY >= rect.top  && event.clientY <= rect.top  + rect.height) {
       return;
     }
 
@@ -429,6 +456,48 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
         throw new Error('invalid pointer mode');
     }
   };
+
+  /**
+   * @param {goog.events.BrowserEvent} event
+   */
+  function enchantPoint(event) {
+    var inner = canvasWindow.canvasBase;
+    /** @type {ClientRect} */
+    var rect = canvasWindow.element.getBoundingClientRect();
+    /** @type {number} */
+    var clientX = (event.type.indexOf('touch') !== 0 ? event : event.getBrowserEvent().changedTouches[0]).clientX;
+    /** @type {number} */
+    var clientY = (event.type.indexOf('touch') !== 0 ? event : event.getBrowserEvent().changedTouches[0]).clientY;
+    /** @type {number} */
+    var x = clientX - rect.left;
+    /** @type {number} */
+    var y = clientY - rect.top;
+    /** @type {number} */
+    var left = parseInt(inner.style.left || 0, 10);
+    /** @type {number} */
+    var top  = parseInt(inner.style.top  || 0, 10);
+    /** @type {number} */
+    var ox = canvasWindow.originX || 0;
+    /** @type {number} */
+    var oy = canvasWindow.originY || 0;
+    /** @type {goog.math.Matrix} */
+    var matrix = canvasWindow.matrix;
+    /** @type {goog.math.Matrix} */
+    var inverse = matrix.getInverse();
+    /** @type {!Array.<number>} */
+    var res = goog.array.flatten(
+      inverse.multiply(
+        new goog.math.Matrix([
+          [x - matrix.getValueAt(0, 2) - left - ox],
+          [y - matrix.getValueAt(1, 2) - top  - oy],
+          [1]
+        ])
+      ).toArray()
+    );
+
+    event.x = res[0] - inverse.getValueAt(0, 2) + ox;
+    event.y = res[1] - inverse.getValueAt(1, 2) + oy;
+  }
 
   goog.array.forEach(Object.keys(canvasWindowEvent), function(eventType){
     if (eventType === goog.events.MouseWheelHandler.EventType.MOUSEWHEEL) {

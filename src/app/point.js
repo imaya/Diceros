@@ -62,6 +62,7 @@ Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
   var touch;
 
   // touch
+  /*
   if (ev.type.indexOf('touch') === 0) {
     touch = ev.getBrowserEvent().changedTouches[0];
     x = touch.pageX - offset.x; // XXX
@@ -72,6 +73,9 @@ Diceros.Point.createFromEvent = function(ev, opt_baseWidth, opt_noPressure) {
     x = ev.getBrowserEvent().pageX - offset.x;
     y = ev.getBrowserEvent().pageY - offset.y;
   }
+  */
+  x = ev.x;
+  y = ev.y;
 
   obj = new Diceros.Point(x, y, opt_baseWidth, opt_noPressure);
 

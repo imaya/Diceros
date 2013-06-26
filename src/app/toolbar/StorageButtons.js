@@ -9,6 +9,8 @@ goog.require('goog.ui.ToolbarMenuButton');
 goog.require('goog.ui.FlatButtonRenderer');
 goog.require('goog.ui.CustomButtonRenderer');
 
+goog.require('Zlib.CRC32');
+
 goog.scope(function() {
 
 /**
@@ -100,10 +102,10 @@ Diceros.ToolbarItem.StorageButton.prototype.createSaveButton_ = function() {
       /** @type {string} */
       var dataString = window.atob(base64[1]);
       /** @type {Uint8Array} */
-      var dataArray = app.stringToByteArray(dataString);
+      var dataArray = this.stringToByteArray(dataString);
 
-      return app.insertDicerosChunk(dataArray, JSON.stringify(canvasWindow.toObject()));
-    }, 'image/png', function() {
+      return this.insertDicerosChunk(dataArray, JSON.stringify(canvasWindow.toObject()));
+    }.bind(this), 'image/png', function() {
       // done
     });
   });
@@ -128,7 +130,7 @@ Diceros.ToolbarItem.StorageButton.prototype.createLoadButton_ = function() {
     var json = this.extractJsonFromPNG(new Uint8Array(data));
 
     // load done
-    this.refreshFromObject(
+    this.app.refreshFromObject(
       JSON.parse(
         json
       )
@@ -140,6 +142,165 @@ Diceros.ToolbarItem.StorageButton.prototype.createLoadButton_ = function() {
 
 Diceros.ToolbarItem.StorageButton.prototype.refresh = function() {
 
+};
+
+/**
+ * @param {Uint8Array} array
+ * @param {string} json
+ * @returns {Uint8Array}
+ */
+Diceros.ToolbarItem.StorageButton.prototype.insertDicerosChunk = function(array, json) {
+  /** @type {Uint8Array} */
+  var newPng = new Uint8Array(array.length + json.length + 12);
+  /** @type {Uint8Array} */
+  var chunkData = this.stringToByteArray(json);
+  /** @type {number} */
+  var chunkLength = chunkData.length;
+  /** @type {number} */
+  var pos = 0;
+  /** @type {number} */
+  var wpos;
+  /** @type {number} */
+  var length;
+  /** @type {string} */
+  var type;
+  /** @type {number} */
+  var limit = array.length;
+  /** @type {number} */
+  var crc32;
+
+  if (String.fromCharCode.apply(null, array.subarray(pos, pos += 8)) !==
+    String.fromCharCode(137, 80, 78, 71, 13, 10, 26, 10)) {
+    throw new Error('invalid png singature');
+  }
+
+  while (pos < limit) {
+    length =
+      (array[pos++] << 24) +
+      (array[pos++] << 16) +
+      (array[pos++] <<  8) +
+      (array[pos++] <<  0);
+
+    type = String.fromCharCode.apply(null, array.subarray(pos, pos += 4));
+
+    if (type === 'IDAT') {
+      // copy before IDAT
+      pos -= 8;
+      newPng.set(array.subarray(0, pos), 0);
+
+      // insert Diceros specific chunk
+      wpos = pos;
+      chunkData = this.stringToByteArray(json);
+      chunkLength = chunkData.length;
+
+      // length
+      newPng[wpos++] = (chunkLength >> 24) & 0xff;
+      newPng[wpos++] = (chunkLength >> 16) & 0xff;
+      newPng[wpos++] = (chunkLength >>  8) & 0xff;
+      newPng[wpos++] = (chunkLength >>  0) & 0xff;
+
+      // type
+      newPng.set(this.stringToByteArray('dvIT'), wpos);
+      wpos += 4;
+
+      // data
+      newPng.set(chunkData, wpos);
+      wpos += chunkLength;
+
+      // crc32
+      crc32 = Zlib.CRC32.calc(chunkData);
+      newPng[wpos++] = (crc32 >> 24) & 0xff;
+      newPng[wpos++] = (crc32 >> 16) & 0xff;
+      newPng[wpos++] = (crc32 >>  8) & 0xff;
+      newPng[wpos++] = (crc32 >>  0) & 0xff;
+
+      // copy IDAT, after IDAT
+      newPng.set(array.subarray(pos), wpos);
+
+      return newPng;
+    } else {
+      pos += length + 4;
+    }
+  }
+
+  throw new Error('IDAT chunk not found');
+};
+
+
+/**
+ * @param {Uint8Array} array
+ * @returns {string}
+ */
+Diceros.ToolbarItem.StorageButton.prototype.extractJsonFromPNG = function(array) {
+  /** @type {number} */
+  var pos = 0;
+  /** @type {number} */
+  var length;
+  /** @type {string} */
+  var type;
+  /** @type {number} */
+  var limit = array.length;
+
+  if (String.fromCharCode.apply(null, array.subarray(pos, pos += 8)) !==
+    String.fromCharCode(137, 80, 78, 71, 13, 10, 26, 10)) {
+    throw new Error('invalid png singature');
+  }
+
+  while (pos < limit) {
+    length =
+      (array[pos++] << 24) +
+        (array[pos++] << 16) +
+        (array[pos++] <<  8) +
+        (array[pos++] <<  0);
+
+    type = String.fromCharCode.apply(null, array.subarray(pos, pos += 4));
+
+    if (type !== 'dvIT') {
+      pos += length + 4;
+    } else {
+      return this.byteArrayToString(array.subarray(pos, pos += length));
+    }
+  }
+
+  throw new Error('json not found');
+};
+
+/**
+ * @param {string} str
+ * @returns {Uint8Array}
+ */
+Diceros.ToolbarItem.StorageButton.prototype.stringToByteArray = function(str) {
+  /** @type {Uint8Array} */
+  var array = new Uint8Array(str.length);
+  /** @type {number} */
+  var i;
+  /** @type {number} */
+  var il;
+
+  for (i = 0, il = str.length; i < il; ++i) {
+    array[i] = str.charCodeAt(i);
+  }
+
+  return array;
+};
+
+/**
+ * @param {Uint8Array} byteArray
+ * @returns {string}
+ */
+Diceros.ToolbarItem.StorageButton.prototype.byteArrayToString = function(byteArray) {
+  /** @type {string} */
+  var str = "";
+  /** @type {number} */
+  var pos = 0;
+  /** @type {number} */
+  var limit = byteArray.length;
+
+  while (pos < limit) {
+    str += String.fromCharCode.apply(null, byteArray.subarray(pos, pos += 0x8000));
+  }
+
+  return str;
 };
 
 });
