@@ -588,24 +588,6 @@ Diceros.CanvasWindow.prototype.selectLayer = function(index) {
 };
 
 /**
- * イベント発火時の座標がキャンバス内かどうかを判定する
- * @param {Event} event
- */
-Diceros.CanvasWindow.prototype.checkCanvasArea = function(event) {
-  var offset, x, y;
-
-  /** @type {Element} */
-  event.target;
-
-  offset = goog.style.getPageOffset(event.target);
-  x = event.pageX - offset.x;
-  y = event.pageY - offset.y;
-
-  // canvas 内
-  return (x >= 0 && x < this.width && y >= 0 && y < this.height);
-};
-
-/**
  * 現在選択中のレイヤーオブジェクトを返却する
  * @return {Diceros.Layer}
  */
