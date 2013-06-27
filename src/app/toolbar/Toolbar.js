@@ -6,6 +6,7 @@ goog.require('Diceros.ToolbarItem.CaptureTargetButton');
 goog.require('Diceros.ToolbarItem.ColorPickerButton');
 goog.require('Diceros.ToolbarItem.StorageButton');
 goog.require('Diceros.ToolbarItem.LineOptimizationButton');
+goog.require('Diceros.ToolbarItem.HorizontalMirrorButton');
 
 goog.scope(function() {
 
@@ -34,6 +35,8 @@ Diceros.Toolbar = function(app) {
   this.captureTarget;
   /** @type {Diceros.ToolbarItem.PointerModeButton} */
   this.pointerMode;
+  /** @type {Diceros.ToolbarItem.HorizontalMirrorButton} */
+  this.horizontalMirror;
 };
 goog.inherits(Diceros.Toolbar, goog.ui.Toolbar);
 
@@ -74,10 +77,6 @@ Diceros.Toolbar.prototype.createDom = function() {
   captureTarget.decorate();
   captureTarget.refresh();
 
-  // ignore touch
-  //this.app.getCurrentCanvasWindow().setIgnoreTouch(false);
-  //this.appendIgnoreTouchButton_(this);
-
   // separator
   this.addChild(new goog.ui.ToolbarSeparator(), true);
 
@@ -85,6 +84,13 @@ Diceros.Toolbar.prototype.createDom = function() {
   var pointerMode = this.pointerMode = new Diceros.ToolbarItem.PointerModeButton(this.app);
   pointerMode.decorate();
   pointerMode.refresh();
+
+  // separator
+  this.addChild(new goog.ui.ToolbarSeparator(), true);
+
+  /** @type {Diceros.ToolbarItem.HorizontalMirrorButton} */
+  var horizontalMorror = this.horizontalMirror = new Diceros.ToolbarItem.HorizontalMirrorButton(this.app);
+  horizontalMorror.decorate();
 
   this.buttons = [
     editMode,

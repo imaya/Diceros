@@ -116,6 +116,12 @@ function(app, index, opt_width, opt_height) {
     [0, 0, 1]
   ]);
 
+  /**
+   * 左右反転表示状態
+   * @type {boolean}
+   */
+  this.horizontalMirror = false;
+
   // line buffer
   Diceros.BezierAGG.BufferCanvas.width = this.width;
   Diceros.BezierAGG.BufferCanvas.height = this.height;
@@ -293,7 +299,13 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
   // move
   canvasWindowEvent[this.captureEventType.move] = function(event) {
     var layer = canvasWindow.getCurrentLayer();
-    var pos = goog.style.getPosition(canvasWindow.canvasBase);
+    /** @type {Array.<number>} */
+    var current;
+    /** @type {Array.<number>} */
+    var prev;
+    /** @type {goog.math.Matrix} */
+    var matrix;
+
 
     event.preventDefault();
 
@@ -313,25 +325,13 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
         break;
       case Diceros.CanvasWindow.PointerMode.Move:
         if (canvasWindow.drag) {
-          if (canvasWindow.getCaptureEventType() === Diceros.CanvasWindow.CaptureEventType.TOUCH) {
-            goog.style.setPosition(
-              canvasWindow.canvasBase,
-              pos.x +
-                event.getBrowserEvent().changedTouches[0].clientX -
-                canvasWindow.prevEvent.getBrowserEvent().changedTouches[0].clientX,
-              pos.y +
-                event.getBrowserEvent().changedTouches[0].clientY -
-                canvasWindow.prevEvent.getBrowserEvent().changedTouches[0].clientY
-            );
-          } else {
-            goog.style.setPosition(
-              canvasWindow.canvasBase,
-              pos.x + event.clientX - canvasWindow.prevEvent.clientX,
-              pos.y + event.clientY - canvasWindow.prevEvent.clientY
-            );
-          }
+          current = canvasWindow.getClientPoint(event);
+          prev = canvasWindow.getClientPoint(canvasWindow.prevEvent);
+          matrix = canvasWindow.matrix;
+          matrix.setValueAt(0, 2, matrix.getValueAt(0, 2) + current[0] - prev[0]);
+          matrix.setValueAt(1, 2, matrix.getValueAt(1, 2) + current[1] - prev[1]);
+          canvasWindow.applyMatrix();
           canvasWindow.prevEvent = event;
-
         }
         break;
       default:
@@ -342,7 +342,6 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
   // start
   canvasWindowEvent[this.captureEventType.start] = function(event) {
     var layer = canvasWindow.getCurrentLayer();
-    var pos = goog.style.getPosition(canvasWindow.canvasBase);
 
     event.preventDefault();
 
@@ -461,42 +460,13 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
    * @param {goog.events.BrowserEvent} event
    */
   function enchantPoint(event) {
-    var inner = canvasWindow.canvasBase;
-    /** @type {ClientRect} */
-    var rect = canvasWindow.element.getBoundingClientRect();
-    /** @type {number} */
-    var clientX = (event.type.indexOf('touch') !== 0 ? event : event.getBrowserEvent().changedTouches[0]).clientX;
-    /** @type {number} */
-    var clientY = (event.type.indexOf('touch') !== 0 ? event : event.getBrowserEvent().changedTouches[0]).clientY;
-    /** @type {number} */
-    var x = clientX - rect.left;
-    /** @type {number} */
-    var y = clientY - rect.top;
-    /** @type {number} */
-    var left = parseInt(inner.style.left || 0, 10);
-    /** @type {number} */
-    var top  = parseInt(inner.style.top  || 0, 10);
-    /** @type {number} */
-    var ox = canvasWindow.originX || 0;
-    /** @type {number} */
-    var oy = canvasWindow.originY || 0;
-    /** @type {goog.math.Matrix} */
-    var matrix = canvasWindow.matrix;
-    /** @type {goog.math.Matrix} */
-    var inverse = matrix.getInverse();
-    /** @type {!Array.<number>} */
-    var res = goog.array.flatten(
-      inverse.multiply(
-        new goog.math.Matrix([
-          [x - matrix.getValueAt(0, 2) - left - ox],
-          [y - matrix.getValueAt(1, 2) - top  - oy],
-          [1]
-        ])
-      ).toArray()
-    );
+    /** @type {Array.<number>} */
+    var client = canvasWindow.getClientPoint(event);
+    /** @type {Array.<number>} */
+    var point = canvasWindow.getCanvasPoint(client[0], client[1]);
 
-    event.x = res[0] - inverse.getValueAt(0, 2) + ox;
-    event.y = res[1] - inverse.getValueAt(1, 2) + oy;
+    event.x = point[0];
+    event.y = point[1];
   }
 
   goog.array.forEach(Object.keys(canvasWindowEvent), function(eventType){
@@ -512,6 +482,134 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
       canvasWindowEvent[eventType]
     );
   }, this);
+};
+
+/**
+ * @param {goog.events.BrowserEvent} event
+ * @returns {Array.<number>}
+ */
+Diceros.CanvasWindow.prototype.getClientPoint = function(event) {
+  /** @type {ClientRect} */
+  var rect = this.element.getBoundingClientRect();
+  /** @type {number} */
+  var clientX = (event.type.indexOf('touch') !== 0 ? event : event.getBrowserEvent().changedTouches[0]).clientX;
+  /** @type {number} */
+  var clientY = (event.type.indexOf('touch') !== 0 ? event : event.getBrowserEvent().changedTouches[0]).clientY;
+  /** @type {number} */
+  var x = clientX - rect.left;
+  /** @type {number} */
+  var y = clientY - rect.top;
+
+  return [x, y];
+};
+
+Diceros.CanvasWindow.prototype.setHorizontalMirror = function(enable) {
+  var center = this.getCenterPoint();
+
+  this.horizontalMirror = enable;
+  this.originX = center[0];
+  this.originY = center[1];
+
+  this.applyMatrix();
+};
+
+Diceros.CanvasWindow.prototype.applyMatrix = function() {
+  var inner = this.canvasBase;
+  /** @type {goog.math.Matrix} */
+  var matrix = this.matrix;
+  var ox = this.originX;
+  var oy = this.originY;
+  var tmp;
+
+  if (this.horizontalMirror) {
+    tmp = this.copyMatrix(matrix).toArray();
+    tmp[0][0] *= -1;
+    tmp[0][1] *= -1;
+    matrix = new goog.math.Matrix(tmp);
+  }
+
+  inner.style.webkitTransform = "matrix(" + this.convertToMatrixArguments(matrix).join(',') + ")";
+  inner.style.webkitTransformOriginX = ox + "px";
+  inner.style.webkitTransformOriginY = oy + "px";
+};
+
+Diceros.CanvasWindow.prototype.convertToMatrixArguments = function(matrix) {
+  return [
+    matrix.getValueAt(0, 0),
+    matrix.getValueAt(1, 0),
+    matrix.getValueAt(0, 1),
+    matrix.getValueAt(1, 1),
+    matrix.getValueAt(0, 2),
+    matrix.getValueAt(1, 2)
+  ];
+};
+
+Diceros.CanvasWindow.prototype.copyMatrix = function(matrix) {
+  var array = matrix.toArray();
+  var i;
+  var il = array.length;
+  var copy = new Array(il);
+
+  for (i = 0; i < il; ++i) {
+    copy[i] = array[i].slice();
+  }
+
+  return new goog.math.Matrix(copy);
+};
+
+/**
+ * @returns {Array.<number>}
+ */
+Diceros.CanvasWindow.prototype.getCenterPoint = function() {
+  var rect = this.canvasBase.getBoundingClientRect();
+
+  return [rect.width / 2, rect.height / 2];
+};
+
+/**
+ * @param {number} x
+ * @param {number} y
+ * @returns {Array.<number>}
+ */
+Diceros.CanvasWindow.prototype.getCanvasPoint = function(x, y) {
+  var inner = this.canvasBase;
+  /** @type {number} */
+  var left = parseInt(inner.style.left || 0, 10);
+  /** @type {number} */
+  var top  = parseInt(inner.style.top  || 0, 10);
+  /** @type {number} */
+  var ox = this.originX || 0;
+  /** @type {number} */
+  var oy = this.originY || 0;
+  /** @type {goog.math.Matrix} */
+  var matrix = this.matrix;
+  /** @type {goog.math.Matrix} */
+  var inverse;
+  /** @type {goog.math.Matrix} */
+  var res;
+  /** @type {Array.<Array.<number>>} */
+  var tmp;
+
+  if (this.horizontalMirror) {
+    tmp = this.copyMatrix(matrix).toArray();
+    tmp[0][0] *= -1;
+    tmp[0][1] *= -1;
+    matrix = new goog.math.Matrix(tmp);
+  }
+
+  inverse = matrix.getInverse();
+  res = inverse.multiply(
+    new goog.math.Matrix([
+      [x - matrix.getValueAt(0, 2) - left - ox],
+      [y - matrix.getValueAt(1, 2) - top  - oy],
+      [1]
+    ])
+  );
+
+  return [
+    res.getValueAt(0, 0) - inverse.getValueAt(0, 2) + ox,
+    res.getValueAt(1, 0) - inverse.getValueAt(1, 2) + oy
+  ];
 };
 
 /**

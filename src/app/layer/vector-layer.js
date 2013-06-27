@@ -715,18 +715,9 @@ Diceros.VectorLayer.prototype.updateCursor = function(event) {
   /** @type {Element} */
   event.target;
 
-  offset = goog.style.getPageOffset(event.target);
-  if (event.type.slice(0, 5) === 'touch') {
-    //x = event.getBrowserEvent().changedTouches[0].pageX- offset.x;
-    //y = event.getBrowserEvent().changedTouches[0].pageY - offset.y;
-    x = event.getBrowserEvent().touches[0].pageX- offset.x;
-    y = event.getBrowserEvent().touches[0].pageY - offset.y;
-    width = 15;
-  } else {
-    x = event.getBrowserEvent().pageX - offset.x;
-    y = event.getBrowserEvent().pageY - offset.y;
-    width = 5;
-  }
+  x = event.x;
+  y = event.y;
+  width = (event.type.slice(0, 5) === 'touch') ? 15 : 5;
 
   if (typeof this.app.currentCanvasWindow === 'number') {
     cssTarget = this.app.windows[this.app.currentCanvasWindow].element;
@@ -738,8 +729,8 @@ Diceros.VectorLayer.prototype.updateCursor = function(event) {
     case Diceros.VectorLayer.Mode.DEFAULT:
       goog.style.setStyle(cssTarget, 'cursor', 'default');
       break;
-    case Diceros.VectorLayer.Mode.DELETE:
-    case Diceros.VectorLayer.Mode.EDIT:
+    case Diceros.VectorLayer.Mode.DELETE: /* FALLTHROUGH */
+    case Diceros.VectorLayer.Mode.EDIT:   /* FALLTHROUGH */
     case Diceros.VectorLayer.Mode.WIDTH_UPDATE:
       ctrlPoint = this.checkCtrlPoint(x, y, width);
       if (ctrlPoint) {
