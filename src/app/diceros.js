@@ -61,12 +61,24 @@ Diceros.Application = function(opt_config) {
    * 横幅
    * @type {number}
    */
-  this.width = opt_config.width || 1024;
+  this.width = opt_config['width'] || 1024;
+  //this.width = 500;
   /**
    * 縦幅
    * @type {number}
    */
-  this.height = opt_config.height || 768;
+  this.height = opt_config['height'] || 768;
+  //this.height = 500;
+  /**
+   * 画面の横幅
+   * @type {number}
+   */
+  this.screenWidth = goog.global.innerWidth;
+  /**
+   * 画面の縦幅
+   * @type {number}
+   */
+  this.screenHeight = goog.global.innerHeight;
   /**
    * ウィンドウリスト
    * @type {Array.<Diceros.Window>}
@@ -117,7 +129,7 @@ Diceros.Application.prototype.render = function(target) {
  */
 Diceros.Application.prototype.layout = function() {
   var layer, canvas, sizer,
-      height = this.height - Diceros.util.scrollBarWidth(),
+      height = this.screenHeight - Diceros.util.scrollBarWidth(),
       layout = this.layoutPanels;
   /** @type {goog.ui.SplitPane} */
   var baseSplitPane;
@@ -165,14 +177,15 @@ Diceros.Application.prototype.layout = function() {
     canvas, toolSplitPane,
     imaya.ui.SplitPane.Orientation.HORIZONTAL
   );
-  baseSplitPane.setInitialSize(this.width - 150);
+  baseSplitPane.setInitialSize(this.screenWidth - 150);
   baseSplitPane.setContinuousResize(true);
   baseSplitPane.setSnapDirection(false);
   baseSplitPane.setHandleSize(30);
 
   // 適用
   baseSplitPane.render(this.target);
-  baseSplitPane.setSize(new goog.math.Size(this.width, this.height - goog.style.getBorderBoxSize(this.toolbar.getElement()).height));
+  baseSplitPane.setSize(new goog.math.Size(this.screenWidth, this.screenHeight));
+  //baseSplitPane.setSize(new goog.math.Size(this.width, this.height - goog.style.getBorderBoxSize(this.toolbar.getElement()).height));
   toolSplitPane.setSize(new goog.math.Size(toolSplitPane.getFirstComponentSize().width, height));
 };
 
@@ -316,11 +329,6 @@ Diceros.Application.prototype.refreshToolbar = function() {
   this.toolbar.refresh();
 };
 
-
-
-
-
-
 Diceros.Application.prototype.refreshFromObject = function(obj) {
   /** @type {number} */
   var width = this.width;
@@ -340,7 +348,7 @@ Diceros.Application.prototype.refreshFromObject = function(obj) {
 
   this.save = obj;
 
-  Diceros.Application.call(this, {'width': width, 'height': height});
+  Diceros.Application.call(this, {'width': obj['width'], 'height': obj['height']});
   this.render(target);
 };
 

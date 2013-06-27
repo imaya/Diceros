@@ -95,6 +95,11 @@ function(app, index, opt_width, opt_height) {
   this.pointerMode = Diceros.CanvasWindow.PointerMode.Draw;
 
   /**
+   * @type {Array.<number>}
+   */
+  this.center = [this.width / 2, this.height / 2];
+
+  /**
    * ビュー変換の起点 X 座標.
    * @type {number}
    */
@@ -107,7 +112,7 @@ function(app, index, opt_width, opt_height) {
   this.originY = 0;
 
   /**
-   * ビューの変換行列
+   * ビューの変換行列.
    * @type {goog.math.Matrix}
    */
   this.matrix = new goog.math.Matrix([
@@ -115,6 +120,13 @@ function(app, index, opt_width, opt_height) {
     [0, 1, 0],
     [0, 0, 1]
   ]);
+
+
+  /**
+   * ビューの回転.
+   * @type {number}
+   */
+  this.radian = 0;
 
   /**
    * 左右反転表示状態
@@ -371,7 +383,6 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
   // end
   canvasWindowEvent[this.captureEventType.end] = function(event) {
     var drag = canvasWindow.drag, layer = canvasWindow.getCurrentLayer();
-    var pos = goog.style.getPosition(canvasWindow.canvasBase);
 
     canvasWindow.drag = false;
 
@@ -504,12 +515,21 @@ Diceros.CanvasWindow.prototype.getClientPoint = function(event) {
 };
 
 Diceros.CanvasWindow.prototype.setHorizontalMirror = function(enable) {
-  var center = this.getCenterPoint();
+  var center = this.center;
 
   this.horizontalMirror = enable;
   this.originX = center[0];
   this.originY = center[1];
 
+  this.applyMatrix();
+};
+
+Diceros.CanvasWindow.prototype.setRadian = function(rad) {
+  var center = this.center;
+
+  this.radian = rad;
+  this.originX = center[0];
+  this.originY = center[1];
   this.applyMatrix();
 };
 
@@ -519,18 +539,33 @@ Diceros.CanvasWindow.prototype.applyMatrix = function() {
   var matrix = this.matrix;
   var ox = this.originX;
   var oy = this.originY;
-  var tmp;
+  /** @type {Array.<Array.<number>>} */
+  var tmp = this.copyMatrix(matrix).toArray();
+
+  tmp[0][0] = Math.cos(this.radian);
+  tmp[0][1] = -Math.sin(this.radian);
+  tmp[1][0] = Math.sin(this.radian);
+  tmp[1][1] = Math.cos(this.radian);
 
   if (this.horizontalMirror) {
-    tmp = this.copyMatrix(matrix).toArray();
     tmp[0][0] *= -1;
     tmp[0][1] *= -1;
-    matrix = new goog.math.Matrix(tmp);
   }
 
-  inner.style.webkitTransform = "matrix(" + this.convertToMatrixArguments(matrix).join(',') + ")";
-  inner.style.webkitTransformOriginX = ox + "px";
-  inner.style.webkitTransformOriginY = oy + "px";
+  matrix = new goog.math.Matrix(tmp);
+
+  inner.style.webkitTransform =
+  inner.style.mozTransform =
+  inner.style.transform =
+    "matrix(" + this.convertToMatrixArguments(matrix).join(',') + ")";
+  inner.style.webkitTransformOriginX =
+  inner.style.mozTransformOriginX =
+  inner.style.transformOriginX =
+    ox + "px";
+  inner.style.webkitTransformOriginY =
+  inner.style.mozTransformOriginY =
+  inner.style.transformOriginY =
+    oy + "px";
 };
 
 Diceros.CanvasWindow.prototype.convertToMatrixArguments = function(matrix) {
@@ -588,14 +623,19 @@ Diceros.CanvasWindow.prototype.getCanvasPoint = function(x, y) {
   /** @type {goog.math.Matrix} */
   var res;
   /** @type {Array.<Array.<number>>} */
-  var tmp;
+  var tmp = this.copyMatrix(matrix).toArray();
+
+  tmp[0][0] = Math.cos(this.radian);
+  tmp[0][1] = -Math.sin(this.radian);
+  tmp[1][0] = Math.sin(this.radian);
+  tmp[1][1] = Math.cos(this.radian);
 
   if (this.horizontalMirror) {
-    tmp = this.copyMatrix(matrix).toArray();
     tmp[0][0] *= -1;
     tmp[0][1] *= -1;
-    matrix = new goog.math.Matrix(tmp);
   }
+
+  matrix = new goog.math.Matrix(tmp);
 
   inverse = matrix.getInverse();
   res = inverse.multiply(
@@ -694,53 +734,62 @@ Diceros.CanvasWindow.prototype.getCurrentLayer = function() {
 };
 
 /**
- * @return {Array.<Object>}
+ * @return {Object}
  */
 Diceros.CanvasWindow.prototype.toObject = function() {
   /** @type {Array.<Diceros.Layer>} */
   var layers = this.layers;
+  /** @type {Object} */
+  var obj = {
+    'layers': []
+  };
   /** @type {Array.<Object>} */
-  var obj = [];
+  var objLayers = obj['layers'];
   /** @type {number} */
   var i;
   /** @type {number} */
   var il;
 
   for (i = 0, il = layers.length; i < il; ++i) {
-    obj[i] = layers[i].toObject();
+    objLayers[i] = layers[i].toObject();
   }
+  obj['width'] = this.width;
+  obj['height'] = this.height;
 
-  return obj
+  return obj;
 };
 
 /**
  * @param {Diceros.Application} app
  * @param {number} index
  * @param {Object} obj
- * @param {number=} opt_width
- * @param {number=} opt_height
  * @return {Diceros.CanvasWindow}
  */
-Diceros.CanvasWindow.fromObject = function(app, index, obj, opt_width, opt_height) {
+Diceros.CanvasWindow.fromObject = function(app, index, obj) {
   /** @type {Diceros.CanvasWindow} */
-  var cw = new Diceros.CanvasWindow(app, index, opt_width, opt_height);
+  var cw = new Diceros.CanvasWindow(app, index, obj['width'], obj['height']);
   /** @type {Array.<Diceros.Layer>} */
   var layers = cw.layers;
+  /** @type {Array.<Object>} */
+  var objLayers = obj['layers'];
+  /** @type {Object} */
+  var layer;
   /** @type {number} */
   var i;
   /** @type {number} */
   var il;
 
-  for (i = 0, il = obj.length; i < il; ++i) {
-     switch (obj[i]['type']) {
+  for (i = 0, il = objLayers.length; i < il; ++i) {
+    layer = objLayers[i];
+     switch (layer['type']) {
        case 'VectorLayer':
-         layers[i] = Diceros.VectorLayer.fromObject(app, obj[i]);
+         layers[i] = Diceros.VectorLayer.fromObject(app, layer);
          break;
        case 'RasterLayer':
-         layers[i] = Diceros.RasterLayer.fromObject(app, obj[i]);
+         layers[i] = Diceros.RasterLayer.fromObject(app, layer);
          break;
        case 'SVGLayer':
-         layers[i] = Diceros.SVGLayer.fromObject(app, obj[i]);
+         layers[i] = Diceros.SVGLayer.fromObject(app, layer);
          break;
        default:
          throw new Error('unknown layer type');

@@ -97,8 +97,7 @@ Diceros.LayerWindow.prototype.createDom = function() {
  * ツールバーの作成
  */
 Diceros.LayerWindow.prototype.createToolbar = function() {
-  var self = this,
-      toolbar = new goog.ui.Toolbar(),
+  var toolbar = new goog.ui.Toolbar(),
       layer = new goog.ui.Menu(),
       layerButton = new goog.ui.MenuButton('Add Layer', layer),
       layerItems = [
@@ -111,26 +110,23 @@ Diceros.LayerWindow.prototype.createToolbar = function() {
       ];
 
   layerButton.setTooltip('Add Layer');
-  goog.array.forEach(layerItems, function(obj){
+  goog.array.forEach(layerItems, function(obj) {
+    /** @type {goog.ui.Control} */
     var item;
+
     if (obj) {
       item = new goog.ui.MenuItem(obj.label);
       item.setValue(obj.type);
       goog.events.listen(
         item,
         goog.ui.Component.EventType.ACTION,
-        function(event) {
-          var canvasWindow = self.app.getCurrentCanvasWindow();
-
-          canvasWindow.addLayer(event.target.getValue());
-          self.refresh();
-        }
+        this.handleAddLayer.bind(this)
       );
     } else {
       item = new goog.ui.MenuSeparator();
     }
     layer.addChild(item, true);
-  }, this);
+  }.bind(this), this);
   // XXX: event handler
 
   toolbar.addChild(layerButton, true);
@@ -138,14 +134,20 @@ Diceros.LayerWindow.prototype.createToolbar = function() {
   toolbar.render(this.element);
 };
 
+Diceros.LayerWindow.prototype.handleAddLayer = function(event) {
+  /** @type {Diceros.CanvasWindow} */
+  var canvasWindow = this.app.getCurrentCanvasWindow();
+
+  canvasWindow.addLayer(event.target.getValue());
+  this.refresh();
+};
+
 /**
  * リフレッシュする
  */
 Diceros.LayerWindow.prototype.refresh = function() {
-  var self = this,
-      canvasWindow = this.app.getCurrentCanvasWindow(),
-      layers,
-      indexMap = {};
+  var canvasWindow = this.app.getCurrentCanvasWindow(),
+      layers;
 
   // TODO: this.clear();
   goog.dom.removeChildren(this.layerListElement);
@@ -203,17 +205,17 @@ Diceros.LayerWindow.prototype.refresh = function() {
           layer.show();
         }
 
-        self.refresh();
-      }
+        this.refresh();
+      }.bind(this)
     );
     goog.events.listen(li, goog.events.EventType.CLICK,
       function(event) {
         canvasWindow.selectLayer(
           /** @type {number} */
-          (Diceros.util.data(this, 'layerIndex'))
+          (Diceros.util.data(event.target, 'layerIndex'))
         );
-        self.refresh();
-      }
+        this.refresh();
+      }.bind(this)
     );
 
     Diceros.util.prepend(this.layerListElement, li);

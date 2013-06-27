@@ -7,6 +7,7 @@ goog.require('Diceros.ToolbarItem.ColorPickerButton');
 goog.require('Diceros.ToolbarItem.StorageButton');
 goog.require('Diceros.ToolbarItem.LineOptimizationButton');
 goog.require('Diceros.ToolbarItem.HorizontalMirrorButton');
+goog.require('Diceros.ToolbarItem.RadianRange');
 
 goog.scope(function() {
 
@@ -37,6 +38,8 @@ Diceros.Toolbar = function(app) {
   this.pointerMode;
   /** @type {Diceros.ToolbarItem.HorizontalMirrorButton} */
   this.horizontalMirror;
+  /** @type {Diceros.ToolbarItem.RadianRange} */
+  this.radianRange;
 };
 goog.inherits(Diceros.Toolbar, goog.ui.Toolbar);
 
@@ -91,6 +94,10 @@ Diceros.Toolbar.prototype.createDom = function() {
   /** @type {Diceros.ToolbarItem.HorizontalMirrorButton} */
   var horizontalMorror = this.horizontalMirror = new Diceros.ToolbarItem.HorizontalMirrorButton(this.app);
   horizontalMorror.decorate();
+
+  /** @type {Diceros.ToolbarItem.RadianRange} */
+  var radianRange = this.radianRange = new Diceros.ToolbarItem.RadianRange(this.app);
+  radianRange.decorate();
 
   this.buttons = [
     editMode,

@@ -108,7 +108,7 @@ Diceros.ToolbarItem.StorageButton.prototype.createSaveButton_ = function() {
     }.bind(this), 'image/png', function() {
       // done
     });
-  });
+  }.bind(this));
 
   return button;
 };
