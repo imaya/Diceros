@@ -32,8 +32,7 @@ goog.inherits(
  */
 Diceros.RasterLayer.prototype.event = function(event) {
   var canvas = this.canvas,
-      ctx = this.ctx,
-      offset, x, y;
+      ctx = this.ctx;
 
   /** @type {Element} */
   event.target;
