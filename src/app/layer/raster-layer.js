@@ -38,10 +38,6 @@ Diceros.RasterLayer.prototype.event = function(event) {
   /** @type {Element} */
   event.target;
 
-  offset = goog.style.getPageOffset(event.target);
-  x = event.event_.pageX - offset.x,
-  y = event.event_.pageY - offset.y;
-
   if (canvas === null || ctx === null) {
     throw 'canvas not initialized';
   }
