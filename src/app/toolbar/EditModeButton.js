@@ -23,8 +23,6 @@ Diceros.ToolbarItem.EditModeButton = function(app) {
 Diceros.ToolbarItem.EditModeButton.prototype.decorate = function() {
   /** @type {goog.ui.Toolbar} */
   var toolbar = this.toolbar;
-  /** @type {Diceros.Application} */
-  var app = this.app;
   /** @type {goog.ui.SelectionModel} */
   var selectionModel = this.selectionModel = new goog.ui.SelectionModel();
 

@@ -28,6 +28,21 @@ Diceros.BezierAGG = function(opt_color) {
 };
 goog.inherits(Diceros.BezierAGG, Diceros.Line);
 
+Diceros.BezierAGG.prototype.copy = function() {
+  var newObject = new Diceros.BezierAGG();
+  var keys = Object.keys(this);
+  var key;
+  var i;
+  var il;
+
+  for (i = 0, il = keys.length; i < il; ++i) {
+    key = keys[i];
+    newObject[key] = (this[key] instanceof Array) ? this[key].slice() : this[key];
+  }
+
+  return newObject;
+};
+
 /**
  * 90度はよく使うので定数化しておく
  * @const
@@ -252,7 +267,8 @@ Diceros.BezierAGG.prototype.outline = function(opt_width, opt_color, opt_start, 
   ctx.width = maxX - minX;
   ctx.height = maxY - minY;
 
-  return /** @type {Diceros.LinePath} */(minX === Infinity ? null : ctx);
+  return minX === Infinity ? null :
+    this.adjustPath(/** @type {Diceros.LinePath} */(ctx));
 };
 
 
@@ -295,7 +311,7 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
     ctx.y = point.y - point.width;
     ctx.width = ctx.height = point.width * 2;
 
-    return /** @type {Diceros.LinePath} */(ctx);
+    return this.adjustPath(/** @type {Diceros.LinePath} */(ctx));
   } else if (data.length === 2) {
     point = data[0];
     next = data[1];
@@ -334,7 +350,7 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
     ctx.width = maxX - minX;
     ctx.height = maxY - minY;
 
-    return /** @type {Diceros.LinePath} */(ctx);
+    return this.adjustPath(/** @type {Diceros.LinePath} */(ctx));
   }
 
   /*
@@ -443,9 +459,22 @@ Diceros.BezierAGG.prototype.path = function(opt_color) {
   ctx.width = maxX - minX;
   ctx.height = maxY - minY;
 
-  return /** @type {Diceros.LinePath} */(minX === Infinity ? null : ctx);
+  return minX === Infinity ? null :
+    this.adjustPath(/** @type {Diceros.LinePath} */(ctx));
 };
 
+/**
+ * @param {Diceros.LinePath} path
+ * @return {Diceros.LinePath}
+ */
+Diceros.BezierAGG.prototype.adjustPath = function(path) {
+  path.x = path.x - 2 | 0;
+  path.y = path.y - 2 | 0;
+  path.width = path.width + 4 | 0;
+  path.height = path.height + 4 | 0;
+
+  return path;
+};
 
 /**
  * ベジェ曲線の一部を描画

@@ -6,6 +6,7 @@ goog.require('goog.ui.Resizable');
 goog.require('goog.ui.ac');
 goog.require('goog.date.DateTime');
 goog.require('goog.ui.TableSorter');
+goog.require('goog.object');
 
 
 goog.scope(function() {
@@ -26,8 +27,17 @@ imaya.ui.GoogleDriveSaveDialog = function(promptTitle, callback, opt_defaultValu
   this.resizable;
   /** @type {HTMLTableRowElement} */
   this.currentSelected;
+  /** @type {Array.<Object>} */
+  this.items;
+  /** @type {Object} */
+  this.filenameToId = {};
 };
 goog.inherits(imaya.ui.GoogleDriveSaveDialog, imaya.ui.Prompt);
+
+imaya.ui.GoogleDriveSaveDialog.prototype.getFilenameToIdTable = function() {
+  return this.filenameToId;
+};
+
 
 imaya.ui.GoogleDriveSaveDialog.prototype.createDom = function() {
   goog.base(this, 'createDom');
@@ -161,6 +171,19 @@ imaya.ui.GoogleDriveSaveDialog.prototype.loadList = function() {
   });
 };
 
+imaya.ui.GoogleDriveSaveDialog.prototype.createFileIdList = function(items) {
+  /** @type {Object} */
+  var table = this.filenameToId;
+
+  items.forEach(function(item) {
+    if (!item['originalFilename'] || item['originalFilename'] in table) {
+      return;
+    }
+
+    table[item['originalFilename']] = item['id'];
+  });
+};
+
 imaya.ui.GoogleDriveSaveDialog.prototype.createItemTable = function(items) {
   /** @type {imaya.ui.GoogleDriveSaveDialog} */
   var dialog = this;
@@ -181,7 +204,7 @@ imaya.ui.GoogleDriveSaveDialog.prototype.createItemTable = function(items) {
   tr = /** @type {HTMLTableRowElement} */(goog.dom.createElement('tr'));
 
   goog.style.setStyles(tr, '<th>filename</th><th>last modified</th>');
-  goog.dom.classes.add(thead, 'googl-drive-save-dialog-header');
+  goog.dom.classes.add(thead, goog.getCssName('googl-drive-save-dialog-header'));
   goog.style.setStyle(table, 'width', '100%');
 
   items.forEach(function(item){
@@ -194,18 +217,28 @@ imaya.ui.GoogleDriveSaveDialog.prototype.createItemTable = function(items) {
       return;
     }
 
-    goog.dom.classes.add(tr, 'google-drive-save-dialog-row');
+    goog.dom.classes.add(tr, goog.getCssName('google-drive-save-dialog-row'));
 
     td = goog.dom.createElement('td');
     td.textContent = item['originalFilename'];
-    goog.dom.classes.add(td, 'google-drive-save-dialog-column', 'google-drive-save-dialog-filename');
+    goog.dom.classes.add(
+      td,
+      goog.getCssName('google-drive-save-dialog-column'),
+      goog.getCssName('google-drive-save-dialog-filename')
+    );
     tr.appendChild(td);
     goog.events.listen(tr, goog.events.EventType.CLICK, function() {
       if (dialog.currentSelected) {
-        goog.dom.classes.remove(dialog.currentSelected, 'google-drive-save-dialog-selected');
+        goog.dom.classes.remove(
+          dialog.currentSelected,
+          goog.getCssName('google-drive-save-dialog-selected')
+        );
       }
       dialog.getInputElement().value = item['originalFilename'];
-      goog.dom.classes.add(dialog.currentSelected = this, 'google-drive-save-dialog-selected');
+      goog.dom.classes.add(
+        dialog.currentSelected = this,
+        goog.getCssName('google-drive-save-dialog-selected')
+      );
     });
 
     td = goog.dom.createElement('td');
@@ -218,7 +251,6 @@ imaya.ui.GoogleDriveSaveDialog.prototype.createItemTable = function(items) {
       padding(date.getMinutes(), '0', 2),
       padding(date.getSeconds(), '0', 2)
     ].join(':');
-    goog.dom.classes.add(td, 'google-drive-save-dialog-column');
     tr.appendChild(td);
 
     tbody.appendChild(tr);
@@ -271,7 +303,10 @@ imaya.ui.GoogleDriveSaveDialog.prototype.handleResponse = function(obj, jsonText
     return;
   }
 
-  items = /** @type {Array.<Object>} */(obj['items']);
+  items = this.items = /** @type {Array.<Object>} */(obj['items']);
+
+  // create file-id list
+  this.createFileIdList(items);
 
   // create table container
   this.clearContent();
@@ -304,8 +339,8 @@ imaya.ui.GoogleDriveSaveDialog.prototype.handleResponse = function(obj, jsonText
  * @return {Array.<string>}
  */
 imaya.ui.GoogleDriveSaveDialog.prototype.getFilenames = function(items) {
-  /** @type {Array.<string>} */
-  var filenames = [];
+  /** @type {Object} */
+  var filenames = {};
   /** @type {number} */
   var i;
   /** @type {number} */
@@ -313,11 +348,11 @@ imaya.ui.GoogleDriveSaveDialog.prototype.getFilenames = function(items) {
 
   for (i = 0, il = items.length; i < il; ++i) {
     if (items[i]['originalFilename']) {
-      filenames.push(/** @type {string} */(items[i]['originalFilename']));
+      filenames[items[i]['originalFilename']] = true;
     }
   }
 
-  return filenames;
+  return goog.object.getKeys(filenames);
 };
 
 imaya.ui.GoogleDriveSaveDialog.prototype.clearContent = function() {

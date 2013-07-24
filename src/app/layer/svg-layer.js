@@ -61,8 +61,6 @@ Diceros.SVGLayer.prototype.drawNewline = function() {
   var line = this.lines[lineIndex];
   /** @type {Diceros.LinePath} */
   var path = this.tempPath;
-  /** @type {CanvasRenderingContext2D} */
-  var overlay = this.getOverlayContext();
 
   // optimization
   if (typeof line.optimize === 'function') {
@@ -79,6 +77,40 @@ Diceros.SVGLayer.prototype.drawNewline = function() {
     path.drawToSVGPath(this.svgPaths[lineIndex]);
     this.canvas.appendChild(this.svgPaths[lineIndex]);
   }
+
+  // save history
+  if (this.history.length > this.historyIndex) {
+    this.history.length = this.historyIndex;
+  }
+  this.history[this.historyIndex++] = new Diceros.HistoryObject(
+    path.x,
+    path.y,
+    path.width,
+    path.height,
+    this.svgPaths[lineIndex],
+    this.svgPaths[lineIndex],
+    goog.bind(function(before) {
+      this.lines.pop();
+      this.paths.pop();
+      this.canvas.removeChild(before);
+      if (this.mode !== Diceros.VectorLayer.Mode.DEFAULT) {
+        this.drawCtrlPoint();
+      } else {
+        this.clearCtrlPoint();
+      }
+    }, this),
+    goog.bind(function(after) {
+      this.lines.push(line);
+      this.paths.push(path);
+      this.canvas.appendChild(after);
+      if (this.mode !== Diceros.VectorLayer.Mode.DEFAULT) {
+        this.drawCtrlPoint();
+      } else {
+        this.clearCtrlPoint();
+      }
+    }, this)
+  );
+  this.sendHistoryTarget();
 };
 
 /**

@@ -2,7 +2,7 @@ goog.provide('Diceros.Layer');
 
 goog.require('goog.dom');
 goog.require('goog.style');
-
+goog.require('Diceros.HistoryObject');
 
 goog.scope(function() {
 
@@ -37,6 +37,16 @@ Diceros.Layer = function(app) {
    * @type {boolean}
    */
   this.visible = true;
+  /**
+   * Undo/Redo 用のヒストリ
+   * @type {Array.<Diceros.HistoryObject>}
+   */
+  this.history = [];
+  /**
+   * Undo/Redo 用のヒストリ位置
+   * @type {number}
+   */
+  this.historyIndex = 0;
 };
 
 /**
@@ -106,6 +116,36 @@ Diceros.Layer.prototype.hide = function() {
   goog.style.showElement(this.canvas, false);
 };
 
+/**
+ * undo
+ */
+Diceros.Layer.prototype.undo = goog.abstractMethod;
+
+/**
+ * redo
+ */
+Diceros.Layer.prototype.redo = goog.abstractMethod;
+
+Diceros.Layer.prototype.shiftHistory = function() {
+  if (this.history.length === 0) {
+    return;
+  }
+
+  this.history.shift();
+  if (this.historyIndex > 0) {
+    --this.historyIndex;
+  }
+};
+
+Diceros.Layer.prototype.adjustHistory = function() {
+  if (this.historyIndex > this.history.length) {
+    this.historyIndex = this.history.length;
+  }
+};
+
+Diceros.Layer.prototype.sendHistoryTarget = function() {
+  this.app.getCurrentCanvasWindow().addHistoryTarget(this);
+};
 
 /**
  * イベントハンドラ

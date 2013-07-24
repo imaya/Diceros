@@ -8,6 +8,8 @@ goog.require('Diceros.ToolbarItem.StorageButton');
 goog.require('Diceros.ToolbarItem.LineOptimizationButton');
 goog.require('Diceros.ToolbarItem.HorizontalMirrorButton');
 goog.require('Diceros.ToolbarItem.RadianRange');
+goog.require('Diceros.ToolbarItem.ZoomRange');
+goog.require('Diceros.ToolbarItem.RasterEditModeButton');
 
 goog.scope(function() {
 
@@ -28,6 +30,8 @@ Diceros.Toolbar = function(app) {
   this.colorPicker;
   /** @type {Diceros.ToolbarItem.EditModeButton} */
   this.editMode;
+  /** @type {Diceros.ToolbarItem.RasterEditModeButton} */
+  this.rasterEditMode;
   /** @type {Diceros.ToolbarItem.LineOptimizationButton} */
   this.lineOptimization;
   /** @type {Diceros.ToolbarItem.StorageButton} */
@@ -67,6 +71,11 @@ Diceros.Toolbar.prototype.createDom = function() {
   editMode.decorate();
   editMode.refresh();
 
+  /** @type {Diceros.ToolbarItem.RasterEditModeButton} */
+  var rasterEditMode = this.rasterEditMode = new Diceros.ToolbarItem.RasterEditModeButton(this.app);
+  rasterEditMode.decorate();
+  rasterEditMode.refresh();
+
   /** @type {Diceros.ToolbarItem.LineOptimizationButton} */
   var lineOptimization = this.lineOptimization = new Diceros.ToolbarItem.LineOptimizationButton(this.app);
   lineOptimization.decorate();
@@ -99,8 +108,13 @@ Diceros.Toolbar.prototype.createDom = function() {
   var radianRange = this.radianRange = new Diceros.ToolbarItem.RadianRange(this.app);
   radianRange.decorate();
 
+  /** @type {Diceros.ToolbarItem.ZoomRange} */
+  var zoomRange = this.zoomRange = new Diceros.ToolbarItem.ZoomRange(this.app);
+  zoomRange.decorate();
+
   this.buttons = [
     editMode,
+    rasterEditMode,
     captureTarget,
     pointerMode
   ];

@@ -24,6 +24,21 @@ Diceros.LinePath = function() {
   this.color;
 };
 
+Diceros.LinePath.prototype.copy = function() {
+  var newObject = new Diceros.LinePath();
+  var keys = Object.keys(this);
+  var key;
+  var i;
+  var il;
+
+  for (i = 0, il = keys.length; i < il; ++i) {
+    key = keys[i];
+    newObject[key] = (this[key] instanceof Array) ? this[key].slice() : this[key];
+  }
+
+  return newObject;
+};
+
 /**
  * @param {CanvasRenderingContext2D} ctx target context
  */

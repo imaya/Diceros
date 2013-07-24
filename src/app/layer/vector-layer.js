@@ -83,7 +83,11 @@ Diceros.VectorLayer = function(app) {
   /**
    * @type {Array.<number>}
    */
-  this.freeList = []
+  this.freeList = [];
+  /**
+   * @type {Object}
+   */
+  this.beforeEdit;
 };
 goog.inherits(
   Diceros.VectorLayer,
@@ -292,6 +296,8 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
         line = this.lines[ctrlPoint.lineIndex];
         width = (line.getCtrlPoints())[ctrlPoint.pointIndex].width;
 
+        this.beforeEdit = line.copy();
+
         this.currentLine = ctrlPoint.lineIndex;
 
         // 制御点の更新
@@ -342,14 +348,17 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
           Diceros.Point.createFromEvent(event, width, true)
         );
 
-        this.refreshCurrentLine();
+        this.refreshCurrentLineEnd();
         this.optimizeRedrawCurrentLine();
         this.currentCtrlPoint = null;
+        this.beforeEdit = null;
       }
       break;
     // WHEEL
     case goog.events.MouseWheelHandler.EventType.MOUSEWHEEL:
       if (ctrlPoint) {
+        this.beforeEdit = this.lines[ctrlPoint.lineIndex].copy();
+
         // update current line
         this.currentLine = ctrlPoint.lineIndex;
         currentLine = this.lines[this.currentLine];
@@ -376,7 +385,7 @@ Diceros.VectorLayer.prototype.handleEventEdit = function(event) {
         );
 
         this.selectLine();
-        this.refreshCurrentLine();
+        this.refreshCurrentLineEnd();
       }
       break;
   }
@@ -405,6 +414,8 @@ Diceros.VectorLayer.prototype.handleEventDelete = function(event) {
         line = this.lines[ctrlPoint.lineIndex];
         width = (line.getCtrlPoints())[ctrlPoint.pointIndex].width;
 
+        this.beforeEdit = line.copy();
+
         this.currentLine = ctrlPoint.lineIndex;
 
         // 制御点の更新
@@ -413,13 +424,15 @@ Diceros.VectorLayer.prototype.handleEventDelete = function(event) {
           Diceros.Point.createFromEvent(event, width, true)
         );
 
+        /*
         if (line.getCtrlPoints().length === 0) {
           this.freeList.push(this.currentLine);
         }
+        */
 
         // 線の選択
         this.selectLine();
-        this.refreshCurrentLine();
+        this.refreshCurrentLineEnd();
       }
       break;
     // MOVE
@@ -460,6 +473,8 @@ Diceros.VectorLayer.prototype.handleEventWidth = function(event) {
         line = this.lines[ctrlPoint.lineIndex];
         width = (line.getCtrlPoints())[ctrlPoint.pointIndex].width;
 
+        this.beforeEdit = line.copy();
+
         this.currentLine = ctrlPoint.lineIndex;
 
         // 線の選択
@@ -499,7 +514,7 @@ Diceros.VectorLayer.prototype.handleEventWidth = function(event) {
     case goog.events.EventType.MOUSEUP:
       // 点の編集中だったらカーソル位置で現在の線を描き直す
       if (this.currentCtrlPoint !== null) {
-        this.refreshCurrentLine();
+        this.refreshCurrentLineEnd();
         this.currentCtrlPoint = null;
       }
       break;
@@ -534,13 +549,13 @@ Diceros.VectorLayer.prototype.clearOutline = function() {
   // clear outline
   path = this.tempPath;
   if (path) {
-    temp.clearRect(path.x - 2, path.y - 2, path.width + 4, path.height + 4);
+    temp.clearRect(path.x, path.y, path.width, path.height);
     this.tempPath = null;
   }
 
   path = line.outline();
   if (path) {
-    overlay.clearRect(path.x - 2, path.y - 2, path.width + 4, path.height + 4);
+    overlay.clearRect(path.x, path.y, path.width, path.height);
     this.overlayPath = null;
   }
 };
@@ -555,6 +570,8 @@ Diceros.VectorLayer.prototype.drawNewline = function() {
   var line = this.lines[lineIndex];
   /** @type {Diceros.LinePath} */
   var path;
+  var before;
+  var after;
 
   // optimization
   if (typeof line.optimize === 'function') {
@@ -563,12 +580,170 @@ Diceros.VectorLayer.prototype.drawNewline = function() {
 
   this.clearOutline();
 
-  // draw new line
   path = this.paths[lineIndex] = line.path();
+
+  // save state before drawing
+  before = document.createElement('canvas');
+  before.width = path.width;
+  before.height = path.height;
+  before.getContext('2d').putImageData(
+    this.ctx.getImageData(path.x, path.y, path.width, path.height),
+    0,
+    0
+  );
+
+  // draw new line
   if (path) {
     path.draw(this.ctx);
   }
+
+  // save state after drawing
+  after = document.createElement('canvas');
+  after.width = path.width;
+  after.height = path.height;
+  after.getContext('2d').putImageData(
+    this.ctx.getImageData(path.x, path.y, path.width, path.height),
+    0,
+    0
+  );
+
+  // save history
+  if (this.history.length > this.historyIndex) {
+    this.history.length = this.historyIndex;
+  }
+  this.history[this.historyIndex++] = new Diceros.HistoryObject(
+    path.x,
+    path.y,
+    path.width,
+    path.height,
+    before.toDataURL(),
+    after.toDataURL(),
+    goog.bind(function() {
+      this.lines.pop();
+      this.paths.pop();
+      if (this.mode !== Diceros.VectorLayer.Mode.DEFAULT) {
+        this.drawCtrlPoint();
+      } else {
+        this.clearCtrlPoint();
+      }
+    }, this),
+    goog.bind(function() {
+      this.lines.push(line);
+      this.paths.push(path);
+      if (this.mode !== Diceros.VectorLayer.Mode.DEFAULT) {
+        this.drawCtrlPoint();
+      } else {
+        this.clearCtrlPoint();
+      }
+    }, this)
+  );
+  this.sendHistoryTarget();
 };
+
+Diceros.VectorLayer.prototype.refreshCurrentLineEnd = function() {
+  /** @type {Diceros.VectorLayer} */
+  var vectorLayer = this;
+  /** @type {HTMLCanvasElement} */
+  var canvas = this.canvas;
+  /** @type {Diceros.Line} */
+  var line = this.lines[this.currentLine];
+
+  this.refreshCurrentLine();
+
+  // save history
+  if (this.history.length > this.historyIndex) {
+    this.history.length = this.historyIndex;
+  }
+
+  var history = new Diceros.HistoryObject(
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+    this.beforeEdit,
+    line.copy(),
+    function(before) {
+      vectorLayer.lines[this.lineIndex] = before;
+      vectorLayer.paths[this.lineIndex] = before.path();
+
+      vectorLayer.currentLine = this.lineIndex;
+      vectorLayer.draw();
+      if (vectorLayer.mode !== Diceros.VectorLayer.Mode.DEFAULT) {
+        vectorLayer.drawCtrlPoint();
+      } else {
+        vectorLayer.clearCtrlPoint();
+      }
+    },
+    function(after) {
+      vectorLayer.lines[this.lineIndex] = after;
+      vectorLayer.paths[this.lineIndex] = after.path();
+      vectorLayer.currentLine = this.lineIndex;
+      vectorLayer.draw();
+      if (vectorLayer.mode !== Diceros.VectorLayer.Mode.DEFAULT) {
+        vectorLayer.drawCtrlPoint();
+      } else {
+        vectorLayer.clearCtrlPoint();
+      }
+    }
+  );
+  history.lineIndex = this.currentLine;
+
+  this.history[this.historyIndex++] = history;
+  this.sendHistoryTarget();
+};
+
+Diceros.VectorLayer.prototype.undo = function() {
+  var top;
+  var image;
+  var ctx = this.ctx;
+
+  if (this.historyIndex === 0) {
+    return;
+  }
+
+  top = this.history[--this.historyIndex];
+
+  if (typeof top.before === "string") {
+    image = new Image();
+
+    image.addEventListener('load', function() {
+      ctx.clearRect(top.x, top.y, top.width, top.height);
+      ctx.drawImage(image, top.x, top.y, top.width, top.height);
+    }, false);
+    image.src = top.before;
+  }
+
+  if (top.beforeFunc) {
+    top.beforeFunc(top.before);
+  }
+};
+
+Diceros.VectorLayer.prototype.redo = function() {
+  var top;
+  var image;
+  var ctx = this.ctx;
+
+  if (this.history.length === this.historyIndex) {
+    return;
+  }
+
+  top = this.history[this.historyIndex++];
+
+  if (typeof top.after === "string") {
+    image = new Image();
+
+    image.addEventListener('load', function() {
+      ctx.clearRect(top.x, top.y, top.width, top.height);
+      ctx.drawImage(image, top.x, top.y, top.width, top.height);
+    }, false);
+    image.src = top.after;
+  }
+
+  if (top.afterFunc) {
+    top.afterFunc(top.after);
+  }
+};
+
 
 /**
  * オーバーレイにざっくり描画する
@@ -589,7 +764,7 @@ Diceros.VectorLayer.prototype.drawOutline = function() {
 
   // clear before outline
   if (tempPath) {
-    temp.clearRect(tempPath.x - 2, tempPath.y - 2, tempPath.width + 4, tempPath.height + 4);
+    temp.clearRect(tempPath.x, tempPath.y, tempPath.width, tempPath.height);
   }
 
   // draw outline

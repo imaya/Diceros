@@ -53,14 +53,10 @@ goog.abstractMethod;
 Diceros.Line.prototype.updateControlPoint =
 goog.nullFunction;
 
-
 /**
- * 描画
- * @param {Object} context 描画するコンテキスト.
- * XXX: context の型が不明なのでとりあえず省略とする.
+ * 自身の deep copy を返す.
  */
-Diceros.Line.prototype.draw = goog.abstractMethod;
-
+Diceros.Line.prototype.copy = goog.abstractMethod;
 
 /**
  * 概ねの描画
@@ -77,7 +73,7 @@ Diceros.Line.prototype.drawOutline = goog.abstractMethod;
  */
 Diceros.Line.prototype.getCtrlPoints = function() {
   return this.ctrlPoints;
-}
+};
 
 
 // end of scope

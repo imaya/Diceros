@@ -21,6 +21,8 @@ imaya.ui.GoogleDriveSaveButton = function(content, opt_renderer, opt_domHelper) 
   this.icon;
   /** @type {string} */
   this.clientId;
+  /** @type {imaya.ui.GoogleDriveSaveDialog} */
+  this.dialog;
 };
 goog.inherits(imaya.ui.GoogleDriveSaveButton, goog.ui.Button);
 
@@ -151,7 +153,7 @@ imaya.ui.GoogleDriveSaveButton.prototype.save = function(filename, data, opt_typ
     throw new Error('invalid access token');
   }
 
-  var dialog = new imaya.ui.GoogleDriveSaveDialog(
+  var dialog = this.dialog = new imaya.ui.GoogleDriveSaveDialog(
     'Save file to Google Drive',
     function(response) {
       if (response !== null) {
@@ -169,6 +171,7 @@ imaya.ui.GoogleDriveSaveButton.prototype.save = function(filename, data, opt_typ
 };
 
 /**
+ * @param {string} filename
  * @param {(string|Array.<number>|Uint8Array)} data
  * @param {string=} opt_type
  * @param {Function=} opt_callback
@@ -193,6 +196,7 @@ imaya.ui.GoogleDriveSaveButton.prototype.sendRequest = function(filename, data, 
   var multipartRequestBody;
   // TODO
   var request;
+  var table = this.dialog.getFilenameToIdTable();
 
   if (typeof data === 'string') {
     base64Data = goog.global.btoa(data);
@@ -210,15 +214,27 @@ imaya.ui.GoogleDriveSaveButton.prototype.sendRequest = function(filename, data, 
     base64Data +
     close_delim;
 
-  request = gapi.client.request({
-    'path': '/upload/drive/v2/files',
-    'method': 'POST',
-    'params': {'uploadType': 'multipart'},
-    'headers': {
-      'Content-Type': 'multipart/mixed; boundary="' + boundary + '"'
-    },
-    'body': multipartRequestBody
-  });
+  if (filename in table) {
+    request = gapi.client.request({
+      'path': '/upload/drive/v2/files/' + table[filename],
+      'method': 'PUT',
+      'params': {'uploadType': 'multipart'},
+      'headers': {
+        'Content-Type': 'multipart/mixed; boundary="' + boundary + '"'
+      },
+      'body': multipartRequestBody
+    });
+  } else {
+    request = gapi.client.request({
+      'path': '/upload/drive/v2/files',
+      'method': 'POST',
+      'params': {'uploadType': 'multipart'},
+      'headers': {
+        'Content-Type': 'multipart/mixed; boundary="' + boundary + '"'
+      },
+      'body': multipartRequestBody
+    });
+  }
 
   request.execute(opt_callback || function() {});
 };

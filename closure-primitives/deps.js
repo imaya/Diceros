@@ -2,11 +2,13 @@
 // Please do not edit.
 goog.addDependency('../closure-primitives/base.js', ['goog'], []);
 goog.addDependency('../src/app/crc32.js', ['Zlib.CRC32'], []);
-goog.addDependency('../src/app/diceros.js', ['Diceros.Application'], ['Diceros.CanvasWindow', 'Diceros.LayerWindow', 'Diceros.SizerWindow', 'Diceros.Toolbar', 'Diceros.WindowType', 'Diceros.util', 'goog.array', 'goog.dom', 'goog.events', 'goog.math.Size', 'goog.object', 'goog.ui.SelectionModel', 'goog.ui.SplitPane', 'goog.ui.ToolbarButton', 'goog.ui.ToolbarColorMenuButton', 'goog.ui.ToolbarColorMenuButtonRenderer', 'goog.ui.ToolbarSeparator', 'goog.ui.ToolbarToggleButton', 'imaya.ui.GoogleDriveLoadToolbarButton', 'imaya.ui.GoogleDriveSaveToolbarButton', 'imaya.ui.SplitPane']);
+goog.addDependency('../src/app/diceros.js', ['Diceros.Application'], ['Diceros.CanvasWindow', 'Diceros.LayerWindow', 'Diceros.SizerWindow', 'Diceros.Toolbar', 'Diceros.WindowType', 'Diceros.util', 'goog.array', 'goog.dom', 'goog.events', 'goog.math.Size', 'goog.object', 'goog.ui.Component', 'goog.ui.SelectionModel', 'goog.ui.SplitPane', 'goog.ui.ToolbarButton', 'goog.ui.ToolbarColorMenuButton', 'goog.ui.ToolbarColorMenuButtonRenderer', 'goog.ui.ToolbarSeparator', 'goog.ui.ToolbarToggleButton', 'imaya.ui.GoogleDriveLoadToolbarButton', 'imaya.ui.GoogleDriveSaveToolbarButton', 'imaya.ui.SplitPane']);
 goog.addDependency('../src/app/event.js', ['Diceros.Event'], []);
-goog.addDependency('../src/app/layer/layer.js', ['Diceros.Layer'], ['goog.dom', 'goog.style']);
+goog.addDependency('../src/app/fill.js', ['CanvasFillAlgorithm'], []);
+goog.addDependency('../src/app/layer/HistoryObject.js', ['Diceros.HistoryObject'], []);
+goog.addDependency('../src/app/layer/layer.js', ['Diceros.Layer'], ['Diceros.HistoryObject', 'goog.dom', 'goog.style']);
 goog.addDependency('../src/app/layer/layertype.js', ['Diceros.LayerType'], []);
-goog.addDependency('../src/app/layer/raster-layer.js', ['Diceros.RasterLayer'], ['Diceros.Layer', 'goog.object']);
+goog.addDependency('../src/app/layer/raster-layer.js', ['Diceros.RasterLayer'], ['CanvasFillAlgorithm', 'Diceros.Layer', 'goog.object']);
 goog.addDependency('../src/app/layer/svg-layer.js', ['Diceros.SVGLayer'], ['Diceros.VectorLayer']);
 goog.addDependency('../src/app/layer/vector-layer.js', ['Diceros.VectorLayer'], ['Diceros.BezierAGG', 'Diceros.Layer', 'Diceros.Point', 'goog.events.EventType', 'goog.events.MouseWheelHandler', 'goog.object', 'goog.style']);
 goog.addDependency('../src/app/line/bezier-agg.js', ['Diceros.BezierAGG'], ['Diceros.Line', 'Diceros.LinePath']);
@@ -22,13 +24,15 @@ goog.addDependency('../src/app/toolbar/HorizontalMirrorButton.js', ['Diceros.Too
 goog.addDependency('../src/app/toolbar/LineOptimizationButton.js', ['Diceros.ToolbarItem.LineOptimizationButton'], ['goog.dom', 'goog.ui.Menu', 'goog.ui.Option', 'goog.ui.ToolbarSelect']);
 goog.addDependency('../src/app/toolbar/PointerModeButton.js', ['Diceros.ToolbarItem.PointerModeButton'], ['Diceros.ToolbarItem.Base', 'goog.array', 'goog.dom', 'goog.events', 'goog.ui.SelectionModel', 'goog.ui.ToolbarToggleButton']);
 goog.addDependency('../src/app/toolbar/RadianRange.js', ['Diceros.ToolbarItem.RadianRange'], ['Diceros.ToolbarItem.Base', 'goog.dom', 'goog.events', 'imaya.ui.ToolbarRange']);
+goog.addDependency('../src/app/toolbar/RasterEditModeButton.js', ['Diceros.ToolbarItem.RasterEditModeButton'], ['Diceros.ToolbarItem.Base']);
 goog.addDependency('../src/app/toolbar/StorageButtons.js', ['Diceros.ToolbarItem.StorageButton'], ['Diceros.ToolbarItem.Base', 'Zlib.CRC32', 'goog.ui.CustomButtonRenderer', 'goog.ui.FlatButtonRenderer', 'goog.ui.Menu', 'goog.ui.ToolbarMenuButton', 'imaya.ui.GoogleDriveLoadToolbarButton', 'imaya.ui.GoogleDriveSaveToolbarButton']);
-goog.addDependency('../src/app/toolbar/Toolbar.js', ['Diceros.Toolbar'], ['Diceros.ToolbarItem.CaptureTargetButton', 'Diceros.ToolbarItem.ColorPickerButton', 'Diceros.ToolbarItem.EditModeButton', 'Diceros.ToolbarItem.HorizontalMirrorButton', 'Diceros.ToolbarItem.LineOptimizationButton', 'Diceros.ToolbarItem.PointerModeButton', 'Diceros.ToolbarItem.RadianRange', 'Diceros.ToolbarItem.StorageButton']);
+goog.addDependency('../src/app/toolbar/Toolbar.js', ['Diceros.Toolbar'], ['Diceros.ToolbarItem.CaptureTargetButton', 'Diceros.ToolbarItem.ColorPickerButton', 'Diceros.ToolbarItem.EditModeButton', 'Diceros.ToolbarItem.HorizontalMirrorButton', 'Diceros.ToolbarItem.LineOptimizationButton', 'Diceros.ToolbarItem.PointerModeButton', 'Diceros.ToolbarItem.RadianRange', 'Diceros.ToolbarItem.RasterEditModeButton', 'Diceros.ToolbarItem.StorageButton', 'Diceros.ToolbarItem.ZoomRange']);
+goog.addDependency('../src/app/toolbar/ZoomRange.js', ['Diceros.ToolbarItem.ZoomRange'], ['Diceros.ToolbarItem.Base', 'goog.dom', 'goog.events', 'imaya.ui.ToolbarRange']);
 goog.addDependency('../src/app/ui/GoogleClient.js', ['imaya.ui.GoogleClient'], []);
 goog.addDependency('../src/app/ui/GoogleDriveLoadButton.js', ['imaya.ui.GoogleDriveLoadButton'], ['goog.ui.Button', 'imaya.ui.GoogleLoader', 'imaya.ui.GooglePickerAPI']);
 goog.addDependency('../src/app/ui/GoogleDriveLoadToolbarButton.js', ['imaya.ui.GoogleDriveLoadToolbarButton'], ['goog.ui.ControlContent', 'goog.ui.ToolbarButtonRenderer', 'goog.ui.registry', 'imaya.ui.GoogleDriveLoadButton']);
 goog.addDependency('../src/app/ui/GoogleDriveSaveButton.js', ['imaya.ui.GoogleDriveSaveButton'], ['Base64', 'goog.ui.Button', 'imaya.ui.GoogleDriveSaveDialog', 'imaya.ui.GooglePickerAPI']);
-goog.addDependency('../src/app/ui/GoogleDriveSaveDialog.js', ['imaya.ui.GoogleDriveSaveDialog'], ['goog.date.DateTime', 'goog.ui.Resizable', 'goog.ui.TableSorter', 'goog.ui.ac', 'imaya.ui.GooglePickerAPI', 'imaya.ui.Prompt']);
+goog.addDependency('../src/app/ui/GoogleDriveSaveDialog.js', ['imaya.ui.GoogleDriveSaveDialog'], ['goog.date.DateTime', 'goog.object', 'goog.ui.Resizable', 'goog.ui.TableSorter', 'goog.ui.ac', 'imaya.ui.GooglePickerAPI', 'imaya.ui.Prompt']);
 goog.addDependency('../src/app/ui/GoogleDriveSaveToolbarButton.js', ['imaya.ui.GoogleDriveSaveToolbarButton'], ['goog.ui.ControlContent', 'goog.ui.ToolbarButtonRenderer', 'goog.ui.registry', 'imaya.ui.GoogleDriveSaveButton']);
 goog.addDependency('../src/app/ui/GoogleLoader.js', ['imaya.ui.GoogleLoader'], []);
 goog.addDependency('../src/app/ui/GooglePickerAPI.js', ['imaya.ui.GooglePickerAPI'], ['imaya.ui.GoogleClient', 'imaya.ui.GoogleLoader']);

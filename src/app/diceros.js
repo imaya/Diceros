@@ -24,6 +24,8 @@ goog.require('goog.events');
 goog.require('goog.math.Size');
 goog.require('goog.array');
 goog.require('goog.object');
+
+goog.require('goog.ui.Component');
 goog.require('goog.ui.SplitPane');
 goog.require('goog.ui.ToolbarToggleButton');
 goog.require('goog.ui.ToolbarButton');
@@ -39,17 +41,15 @@ goog.scope(function() {
  * お絵描きアプリケーションクラス
  * @param {Object=} opt_config アプリケーション初期化設定
  * @constructor
+ * @extends {goog.ui.Component}
  */
 Diceros.Application = function(opt_config) {
+  goog.base(this);
+
   if (!opt_config) {
     opt_config = {};
   }
 
-  /**
-   * 描画対象エレメント
-   * @type {!Element}
-   */
-  this.target;
   /**
    * CSSプレフィックス
    * @type {string}
@@ -112,58 +112,52 @@ Diceros.Application = function(opt_config) {
   this.save;
   /** @type {?string} */
   this.color;
+  /** @type {number} */
+  this.rgb;
 };
+goog.inherits(Diceros.Application, goog.ui.Component);
 
-/**
- * アプリケーションの描画
- * @param {!Element} target 描画対象となる HTML Element.
- */
-Diceros.Application.prototype.render = function(target) {
-  this.target = target;
-  this.layout();
-  this.setEvent();
+/*
+Diceros.Application.prototype.decorate = function(element) {
+  goog.base(this, element);
 };
+*/
 
-/**
- * 各コンポーネントの配置
- */
-Diceros.Application.prototype.layout = function() {
-  var layer, canvas, sizer,
-      height = this.screenHeight - Diceros.util.scrollBarWidth(),
-      layout = this.layoutPanels;
-  /** @type {goog.ui.SplitPane} */
-  var baseSplitPane;
-  /** @type {goog.ui.SplitPane} */
-  var toolSplitPane;
-  /** @type {Object} */
-  var obj;
+Diceros.Application.prototype.createDom = function() {
+  goog.base(this, 'createDom');
 
-  // ウィンドウの生成
-  layer = this.addWindow(Diceros.WindowType.LAYER_WINDOW);
+  var layerWindow;
+  var canvasWindow;
+  var sizerWindow;
+  var layoutPanels = this.layoutPanels;
+
+  // layer window
+  layerWindow = this.addWindow(Diceros.WindowType.LAYER_WINDOW);
+
+  // canvas window
   if (!this.save) {
-    canvas = this.addWindow(Diceros.WindowType.CANVAS_WINDOW);
+    canvasWindow = this.addWindow(Diceros.WindowType.CANVAS_WINDOW);
   } else {
     // データからの読み込みの場合
-    obj = this.save;
-    canvas = Diceros.CanvasWindow.fromObject(
+    canvasWindow = Diceros.CanvasWindow.fromObject(
       this,
       this.windows.length,
-      obj
+      this.save
     );
     this.currentCanvasWindow = this.windows.length;
     this.selectCanvasWindow(this.windows.length);
-    this.windows.push(canvas);
+    this.windows.push(canvasWindow);
   }
-  sizer = this.addWindow(Diceros.WindowType.SIZER_WINDOW);
 
-  // 配置
+  // sizer window
+  sizerWindow = this.addWindow(Diceros.WindowType.SIZER_WINDOW);
 
-  // ツールバー
-  this.createToolbar();
+  // toolbar
+  this.toolbar = new Diceros.Toolbar(this);
 
-  // サイズとレイヤーウィンドウをツールパネルに
-  toolSplitPane = layout.toolSplitPane = new goog.ui.SplitPane(
-    sizer, layer,
+  // splitpane
+  var toolSplitPane = layoutPanels.toolSplitPane = new goog.ui.SplitPane(
+    sizerWindow, layerWindow,
     goog.ui.SplitPane.Orientation.VERTICAL
   );
   toolSplitPane.setInitialSize(150);
@@ -172,9 +166,9 @@ Diceros.Application.prototype.layout = function() {
     toolSplitPane.setSize(size);
   };
 
-  // ツールパネルとキャンバスウィンドウの結合
-  baseSplitPane = layout.baseSplitPane = new imaya.ui.SplitPane(
-    canvas, toolSplitPane,
+  // splitpane
+  var baseSplitPane = layoutPanels.baseSplitPane = new imaya.ui.SplitPane(
+    canvasWindow, layoutPanels.toolSplitPane,
     imaya.ui.SplitPane.Orientation.HORIZONTAL
   );
   baseSplitPane.setInitialSize(this.screenWidth - 150);
@@ -182,11 +176,62 @@ Diceros.Application.prototype.layout = function() {
   baseSplitPane.setSnapDirection(false);
   baseSplitPane.setHandleSize(30);
 
+  this.addChild(this.toolbar, true);
+  this.addChild(baseSplitPane, true);
+};
+
+Diceros.Application.prototype.enterDocument = function() {
+  goog.base(this, 'enterDocument');
+
+  this.layout();
+  this.setEvent();
+};
+
+/**
+ * @param {goog.math.Size} size
+ */
+Diceros.Application.prototype.resizeScreen = function(size) {
+  var prevWidth = this.screenWidth;
+
+  this.screenWidth = size.width;
+  this.screenHeight = size.height;
+
+  // splitpane
+  this.layoutPanels.baseSplitPane.setSize(
+    new goog.math.Size(
+      this.screenWidth,
+      this.screenHeight
+    )
+  );
+
+  // first component
+  this.layoutPanels.baseSplitPane.setFirstComponentSize(
+    this.screenWidth -
+    (prevWidth - this.layoutPanels.baseSplitPane.getFirstComponentSize())
+  );
+};
+
+/**
+ * 各コンポーネントの配置
+ */
+Diceros.Application.prototype.layout = function() {
+  var height = this.screenHeight - Diceros.util.scrollBarWidth();
+
   // 適用
-  baseSplitPane.render(this.target);
-  baseSplitPane.setSize(new goog.math.Size(this.screenWidth, this.screenHeight));
+  this.layoutPanels.baseSplitPane.setSize(
+    new goog.math.Size(
+      this.screenWidth,
+      height
+      //this.screenHeight
+    )
+  );
   //baseSplitPane.setSize(new goog.math.Size(this.width, this.height - goog.style.getBorderBoxSize(this.toolbar.getElement()).height));
-  toolSplitPane.setSize(new goog.math.Size(toolSplitPane.getFirstComponentSize().width, height));
+  this.layoutPanels.toolSplitPane.setSize(
+    new goog.math.Size(
+      this.layoutPanels.toolSplitPane.getFirstComponentSize().width,
+      height
+    )
+  );
 };
 
 /**
@@ -287,11 +332,24 @@ Diceros.Application.prototype.setEvent = function() {
 
   // キーボードイベント
   goog.events.listen(
-    this.target, goog.events.EventType.KEYDOWN, function(event) {
-      var canvasWindow = app.getCurrentCanvasWindow(),
-          layer = canvasWindow.getCurrentLayer();
+    this.getElement(), goog.events.EventType.KEYDOWN, function(event) {
+      var canvasWindow = app.getCurrentCanvasWindow();
+      var layer;
 
       event.preventDefault();
+
+      // TODO: undo, redo
+      // Ctrl+Z, Ctrl+Shift+Z
+      if (canvasWindow && !canvasWindow.drag && event.keyCode === 90 && event.ctrlKey) {
+        if (event.shiftKey) {
+          canvasWindow.redo();
+        } else {
+          canvasWindow.undo();
+        }
+        return;
+      }
+
+      layer = canvasWindow.getCurrentLayer();
 
       if (!layer) {
         return;
@@ -301,7 +359,7 @@ Diceros.Application.prototype.setEvent = function() {
     }
   );
   goog.events.listen(
-    this.target, goog.events.EventType.KEYUP, function(event) {
+    this.getElement(), goog.events.EventType.KEYUP, function(event) {
       var canvasWindow = app.getCurrentCanvasWindow(),
           layer = canvasWindow.getCurrentLayer();
 
@@ -318,13 +376,6 @@ Diceros.Application.prototype.setEvent = function() {
 /**
  * ツールバーの作成
  */
-Diceros.Application.prototype.createToolbar = function() {
-  /** @type {goog.ui.Toolbar} */
-  var toolbar = this.toolbar = new Diceros.Toolbar(this);
-
-  toolbar.render(this.target);
-};
-
 Diceros.Application.prototype.refreshToolbar = function() {
   this.toolbar.refresh();
 };
@@ -335,7 +386,7 @@ Diceros.Application.prototype.refreshFromObject = function(obj) {
   /** @type {number} */
   var height = this.height;
   /** @type {!Element} */
-  var target = this.target;
+  var target = /** @type {!Element} */(this.getElement());
 
   if (this.target) {
     this.target.innerHTML = '';

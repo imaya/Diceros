@@ -67,6 +67,15 @@ imaya.ui.HSVColorPickerMenuButton.prototype.getSelectedColor = function() {
   return /** @type {string} */ (this.getValue());
 };
 
+/**
+ * @return {Array.<number>}
+ */
+imaya.ui.HSVColorPickerMenuButton.prototype.getSelectedColorRGB = function() {
+  var picker = this.getMenu().getChildAt(0);
+
+  return picker ? picker.getRGB() : imaya.ui.HSVColorPicker.hsvToRgb(this.hsv[0], this.hsv[1], this.hsv[2]);
+};
+
 imaya.ui.HSVColorPickerMenuButton.prototype.createStyle = function() {
   return 'rgb(' + imaya.ui.HSVColorPicker.hsvToRgb(this.hsv[0], this.hsv[1], this.hsv[2]).join(',') + ')';
 };

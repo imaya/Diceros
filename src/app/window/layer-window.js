@@ -204,9 +204,7 @@ Diceros.LayerWindow.prototype.refresh = function() {
         } else {
           layer.show();
         }
-
-        this.refresh();
-      }.bind(this)
+      }
     );
     goog.events.listen(li, goog.events.EventType.CLICK,
       function(event) {

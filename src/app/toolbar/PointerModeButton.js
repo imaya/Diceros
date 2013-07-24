@@ -41,6 +41,11 @@ Diceros.ToolbarItem.PointerModeButton.prototype.decorate = function() {
       value: Diceros.CanvasWindow.PointerMode.Move,
       class: goog.getCssName('icon-hand'),
       button: void 0
+    },
+    {
+      value: Diceros.CanvasWindow.PointerMode.Fill,
+      class: goog.getCssName('icon-fill'),
+      button: void 0
     }
   ];
 

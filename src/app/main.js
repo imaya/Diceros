@@ -38,9 +38,14 @@ Diceros.Main.prototype.init = function() {
   this.diceros.render(target);
 };
 
+Diceros.Main.prototype.resize = function(width, height) {
+  this.diceros.resizeScreen(new goog.math.Size(width, height));
+};
+
 // Diceros.Main として外から利用できるようにする
 goog.exportSymbol('Diceros.Main', Diceros.Main);
 goog.exportSymbol('Diceros.Main.prototype.init', Diceros.Main.prototype.init);
+goog.exportSymbol('Diceros.Main.prototype.resize', Diceros.Main.prototype.resize);
 
 // end of scope
 });

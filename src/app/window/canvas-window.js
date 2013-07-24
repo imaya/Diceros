@@ -40,6 +40,10 @@ function(app, index, opt_width, opt_height) {
    */
   this.element;
   /**
+   * @type {!Element}
+   */
+  this.canvasBase;
+  /**
    * XXX: ドラッグ中？
    * @type {boolean}
    */
@@ -129,10 +133,28 @@ function(app, index, opt_width, opt_height) {
   this.radian = 0;
 
   /**
+   * ビューの拡大.
+   * @type {number}
+   */
+  this.zoom = 1.0;
+
+  /**
    * 左右反転表示状態
    * @type {boolean}
    */
   this.horizontalMirror = false;
+
+  /**
+   * 操作のあったレイヤー履歴
+   * @type {Array.<Diceros.Layer>}
+   */
+  this.history = [];
+
+  /**
+   * 操作履歴の現在位置.
+   * @type {number}
+   */
+  this.historyIndex = 0;
 
   // line buffer
   Diceros.BezierAGG.BufferCanvas.width = this.width;
@@ -148,7 +170,8 @@ goog.inherits(
  */
 Diceros.CanvasWindow.PointerMode = {
   Draw: 0,
-  Move: 1
+  Move: 1,
+  Fill: 2
 };
 
 /**
@@ -170,7 +193,7 @@ Diceros.CanvasWindow.prototype.decorateInternal = function(element) {
   var i;
   var il;
 
-  goog.dom.append(this.app.target, this.element);
+  goog.dom.append(/** @type {!Node} */(this.app.getElement()), this.element);
 
   goog.style.setStyle(element, {
     'width': '100%',
@@ -346,6 +369,8 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
           canvasWindow.prevEvent = event;
         }
         break;
+      case Diceros.CanvasWindow.PointerMode.Fill:
+        break;
       default:
         throw new Error('invalid pointer mode');
     }
@@ -369,7 +394,8 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
     canvasWindow.drag = true;
 
     switch (canvasWindow.pointerMode) {
-      case Diceros.CanvasWindow.PointerMode.Draw:
+      case Diceros.CanvasWindow.PointerMode.Draw: /* FALLTHROUGH */
+      case Diceros.CanvasWindow.PointerMode.Fill:
         layer && layer.event(event);
         break;
       case Diceros.CanvasWindow.PointerMode.Move:
@@ -467,6 +493,10 @@ Diceros.CanvasWindow.prototype.setEvent = function() {
     }
   };
 
+  canvasWindowEvent[goog.events.EventType.CONTEXTMENU] = function(event) {
+    event.preventDefault();
+  };
+
   /**
    * @param {goog.events.BrowserEvent} event
    */
@@ -533,19 +563,33 @@ Diceros.CanvasWindow.prototype.setRadian = function(rad) {
   this.applyMatrix();
 };
 
+Diceros.CanvasWindow.prototype.setZoom = function(zoom) {
+  var center = this.center;
+
+  this.zoom = zoom;
+  this.originX = center[0];
+  this.originY = center[1];
+  this.applyMatrix();
+};
+
 Diceros.CanvasWindow.prototype.applyMatrix = function() {
+  /** @type {Element} */
   var inner = this.canvasBase;
   /** @type {goog.math.Matrix} */
   var matrix = this.matrix;
+  /** @type {number} */
   var ox = this.originX;
+  /** @type {number} */
   var oy = this.originY;
   /** @type {Array.<Array.<number>>} */
   var tmp = this.copyMatrix(matrix).toArray();
+  /** @type {CSSStyleDeclaration} */
+  var style = inner.style;
 
-  tmp[0][0] = Math.cos(this.radian);
-  tmp[0][1] = -Math.sin(this.radian);
-  tmp[1][0] = Math.sin(this.radian);
-  tmp[1][1] = Math.cos(this.radian);
+  tmp[0][0] = Math.cos(this.radian) * this.zoom;
+  tmp[0][1] = -Math.sin(this.radian) * this.zoom;
+  tmp[1][0] = Math.sin(this.radian) * this.zoom;
+  tmp[1][1] = Math.cos(this.radian) * this.zoom;
 
   if (this.horizontalMirror) {
     tmp[0][0] *= -1;
@@ -554,17 +598,17 @@ Diceros.CanvasWindow.prototype.applyMatrix = function() {
 
   matrix = new goog.math.Matrix(tmp);
 
-  inner.style.webkitTransform =
-  inner.style.mozTransform =
-  inner.style.transform =
+  style.webkitTransform =
+  style.mozTransform =
+  style.transform =
     "matrix(" + this.convertToMatrixArguments(matrix).join(',') + ")";
-  inner.style.webkitTransformOriginX =
-  inner.style.mozTransformOriginX =
-  inner.style.transformOriginX =
+  style.webkitTransformOriginX =
+  style.mozTransformOriginX =
+  style.transformOriginX =
     ox + "px";
-  inner.style.webkitTransformOriginY =
-  inner.style.mozTransformOriginY =
-  inner.style.transformOriginY =
+  style.webkitTransformOriginY =
+  style.mozTransformOriginY =
+  style.transformOriginY =
     oy + "px";
 };
 
@@ -624,11 +668,15 @@ Diceros.CanvasWindow.prototype.getCanvasPoint = function(x, y) {
   var res;
   /** @type {Array.<Array.<number>>} */
   var tmp = this.copyMatrix(matrix).toArray();
+  /** @type {number} @const */
+  var cos = Math.cos(this.radian);
+  /** @type {number} @const */
+  var sin = Math.sin(this.radian);
 
-  tmp[0][0] = Math.cos(this.radian);
-  tmp[0][1] = -Math.sin(this.radian);
-  tmp[1][0] = Math.sin(this.radian);
-  tmp[1][1] = Math.cos(this.radian);
+  tmp[0][0] = cos * this.zoom;
+  tmp[0][1] = -sin * this.zoom;
+  tmp[1][0] = sin * this.zoom;
+  tmp[1][1] = cos * this.zoom;
 
   if (this.horizontalMirror) {
     tmp[0][0] *= -1;
@@ -731,6 +779,76 @@ Diceros.CanvasWindow.prototype.selectLayer = function(index) {
  */
 Diceros.CanvasWindow.prototype.getCurrentLayer = function() {
   return this.layers[this.currentLayer];
+};
+
+/**
+ * 履歴に追加.
+ * @param {Diceros.Layer} target
+ */
+Diceros.CanvasWindow.prototype.addHistoryTarget = function(target) {
+  while (this.history.length > this.historyIndex) {
+    this.history.pop();
+  }
+  target.adjustHistory();
+
+  this.history[this.historyIndex++] = target;
+
+  while (this.history.length > 5) {
+    target = this.history.shift();
+    target.shiftHistory();
+    if (this.historyIndex > 0) {
+      --this.historyIndex;
+    }
+  }
+
+  //this.dumpHistory();
+};
+
+/**
+ * Undo
+ */
+Diceros.CanvasWindow.prototype.undo = function() {
+  if (this.historyIndex === 0) {
+    return;
+  }
+
+  this.history[--this.historyIndex].undo();
+
+  //this.dumpHistory();
+};
+
+/**
+ * Redo
+ */
+Diceros.CanvasWindow.prototype.redo = function() {
+  if (this.historyIndex >= this.history.length) {
+    return;
+  }
+
+  this.history[this.historyIndex++].redo();
+
+  //this.dumpHistory();
+};
+
+/**
+ * 現在の履歴情報を表示
+ */
+Diceros.CanvasWindow.prototype.dumpHistory = function() {
+  var output = [];
+  var i;
+  var il;
+
+  if (!goog.debug) {
+    return;
+  }
+
+  // canvas window
+  for (i = 0, il = this.history.length; i < il; ++i) {
+    output[i] = this.history[i].name;
+  }
+  output[this.historyIndex] += " <- Index";
+
+  goog.global.console.log(output.join("\n"));
 };
 
 /**

@@ -23,14 +23,26 @@ Diceros.ToolbarItem.ColorPickerButton.prototype.decorate = function() {
 
   colorButton.setSelectedColor(0, 0, 0);
   goog.events.listen(colorButton, goog.ui.Component.EventType.CHANGE, function(event) {
-    this.app.color = event.target.getValue();
+    this.refreshSelectedColor();
   }.bind(this));
-  this.app.color = colorButton.getSelectedColor();
+  this.refreshSelectedColor();
 
   this.toolbar.addChild(colorButton, true);
 };
 
 Diceros.ToolbarItem.ColorPickerButton.prototype.refresh = function(){
+};
+
+Diceros.ToolbarItem.ColorPickerButton.prototype.refreshSelectedColor = function(){
+  /** @type {imaya.ui.ToolbarHSVColorPickerMenuButton} */
+  var colorButton = this.button;
+  /** @type {Array.<number>} */
+  var rgb = colorButton.getSelectedColorRGB();
+
+  this.app.color = colorButton.getSelectedColor();
+  this.app.rgb = (
+    (rgb[0] << 24) | (rgb[1] << 16) | (rgb[2] << 8) | 255
+  ) >>> 0;
 };
 
 });
